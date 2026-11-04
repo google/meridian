@@ -640,6 +640,22 @@ class BackendTest(parameterized.TestCase):
     self.assertEqual(tensor.dtype, backend.int32)
     test_utils.assert_allequal(tensor, np.array([1, 2], dtype=np.int32))
 
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_block_until_ready(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    structure = {
+        "vector": backend.to_tensor([1.0, 2.0]) + backend.to_tensor([3.0, 4.0]),
+        "pair": (backend.to_tensor(5), backend.to_tensor([6, 7])),
+    }
+
+    ready = backend.block_until_ready(structure)
+
+    self.assertEqual(ready.keys(), structure.keys())
+    self.assertIsInstance(ready["vector"], backend.Tensor)
+    test_utils.assert_allclose(ready["vector"], np.array([4.0, 6.0]))
+    test_utils.assert_allequal(ready["pair"][0], np.array(5))
+    test_utils.assert_allequal(ready["pair"][1], np.array([6, 7]))
+
   def test_to_tensor_warns_on_implicit_downcast_x64_disabled_for_jax(self):
     """Tests warning issue when float64 is cast to float32 (x64 disabled)."""
     self._set_backend_for_test(_JAX)
@@ -2641,6 +2657,228 @@ class XlaWindowedAdaptiveNutsTest(BackendTest):
             " issue with JAX JIT compilation caching the seed incorrectly."
         ),
     )
+
+  def _run_sampling_with_and_without_step_callback(self, backend_name):
+    """Samples twice from one seed and returns both outputs and the steps."""
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=backend_name,
+        model=model,
+        n_chains=2,
+        n_draws=5,
+        num_adaptation_steps=3,
+        seed_int=123,
+    )
+    plain = self._run_sampling(**common_args)
+    n_divergent_per_step = []
+    reported = self._run_sampling(
+        step_callback=n_divergent_per_step.append, **common_args
+    )
+    return plain, reported, n_divergent_per_step
+
+  def _assert_same_sampler_output(self, expected, actual):
+    draws, trace = expected
+    draws_actual, trace_actual = actual
+    test_utils.assert_allequal(draws["x"], draws_actual["x"])
+    self.assertEqual(trace.keys(), trace_actual.keys())
+    for key in trace:
+      test_utils.assert_allequal(trace[key], trace_actual[key])
+
+  def test_step_callback_does_not_change_results_jax(self):
+    """The step-reporting sampler must draw exactly what the plain one draws."""
+    self._set_backend_for_test(_JAX)
+
+    plain, reported, n_divergent_per_step = (
+        self._run_sampling_with_and_without_step_callback(_JAX)
+    )
+
+    self._assert_same_sampler_output(plain, reported)
+    # Every adaptation step and every draw is reported, exactly once.
+    self.assertLen(n_divergent_per_step, 3 + 5)
+    for n_divergent in n_divergent_per_step:
+      self.assertIsInstance(n_divergent, int)
+      self.assertBetween(n_divergent, 0, 2)
+
+  def test_step_callback_is_ignored_tensorflow(self):
+    """XLA-compiled TensorFlow functions cannot call back into Python."""
+    self._set_backend_for_test(_TF)
+
+    plain, reported, n_divergent_per_step = (
+        self._run_sampling_with_and_without_step_callback(_TF)
+    )
+
+    self._assert_same_sampler_output(plain, reported)
+    self.assertEmpty(n_divergent_per_step)
+
+  def test_step_callback_reports_divergent_transitions_jax(self):
+    """Reported divergences must add up to the `diverging` trace."""
+    self._set_backend_for_test(_JAX)
+
+    model = self._get_test_model(dims=2)
+    n_divergent_per_step = []
+    num_adaptation_steps = 2
+    # A huge step size makes the leapfrog integrator diverge on every step.
+    _, trace = self._run_sampling(
+        backend_name=_JAX,
+        model=model,
+        n_chains=2,
+        n_draws=6,
+        num_adaptation_steps=num_adaptation_steps,
+        seed_int=5,
+        init_step_size=1e6,
+        step_callback=n_divergent_per_step.append,
+    )
+
+    n_divergent_in_trace = int(np.count_nonzero(np.asarray(trace["diverging"])))
+    self.assertGreater(n_divergent_in_trace, 0)
+    self.assertEqual(
+        sum(n_divergent_per_step[num_adaptation_steps:]), n_divergent_in_trace
+    )
+
+  def test_step_callback_preserves_final_kernel_results_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        joint_dist=model,
+        n_chains=2,
+        n_draws=5,
+        num_adaptation_steps=3,
+        return_final_kernel_results=True,
+    )
+    steps = []
+
+    plain = backend.xla_windowed_adaptive_nuts(
+        seed=backend.RNGHandler(123).get_kernel_seed(), **common_args
+    )
+    reported = backend.xla_windowed_adaptive_nuts(
+        seed=backend.RNGHandler(123).get_kernel_seed(),
+        step_callback=steps.append,
+        **common_args,
+    )
+
+    self.assertLen(steps, 3 + 5)
+    self.assertEqual(tuple(reported.all_states["x"].shape), (5, 2, 2))
+    self.assertEqual(tuple(reported.trace["step_size"].shape), (5,))
+    test_utils.assert_allequal(plain.all_states["x"], reported.all_states["x"])
+    plain_leaves = jax.tree_util.tree_leaves(plain.final_kernel_results)
+    reported_leaves = jax.tree_util.tree_leaves(reported.final_kernel_results)
+    self.assertLen(reported_leaves, len(plain_leaves))
+    for plain_leaf, reported_leaf in zip(plain_leaves, reported_leaves):
+      # The kernel results carry the sampler's PRNG key, which NumPy cannot
+      # compare unless unwrapped.
+      if jnp.issubdtype(
+          getattr(plain_leaf, "dtype", None), jax.dtypes.prng_key
+      ):
+        plain_leaf = jax.random.key_data(plain_leaf)
+        reported_leaf = jax.random.key_data(reported_leaf)
+      test_utils.assert_allequal(plain_leaf, reported_leaf)
+
+  def test_step_callback_keeps_tuning_draws_when_not_discarded_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=_JAX,
+        model=model,
+        n_chains=2,
+        n_draws=5,
+        num_adaptation_steps=3,
+        seed_int=123,
+        discard_tuning=False,
+    )
+    steps = []
+
+    plain = self._run_sampling(**common_args)
+    reported = self._run_sampling(step_callback=steps.append, **common_args)
+
+    self.assertLen(steps, 3 + 5)
+    self.assertEqual(tuple(reported[0]["x"].shape), (3 + 5, 2, 2))
+    self._assert_same_sampler_output(plain, reported)
+
+  def test_step_callback_rejects_custom_trace_fn_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    model = self._get_test_model(dims=2)
+    with self.assertRaisesRegex(ValueError, "custom `trace_fn`"):
+      self._run_sampling(
+          backend_name=_JAX,
+          model=model,
+          n_chains=2,
+          n_draws=5,
+          num_adaptation_steps=3,
+          seed_int=123,
+          trace_fn=lambda *args: (),
+          step_callback=lambda n_divergent: None,
+      )
+
+  def test_step_callback_without_num_adaptation_steps_uses_default_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    model = self._get_test_model(dims=1)
+    steps = []
+    draws, trace = backend.xla_windowed_adaptive_nuts(
+        joint_dist=model,
+        n_chains=1,
+        n_draws=2,
+        seed=backend.RNGHandler(11).get_kernel_seed(),
+        step_callback=steps.append,
+    )
+
+    # Default `num_adaptation_steps` in TFP is 500.
+    self.assertLen(steps, 500 + 2)
+    self.assertEqual(tuple(draws["x"].shape), (2, 1, 1))
+    self.assertEqual(tuple(trace["step_size"].shape), (2,))
+
+  def test_step_callbacks_of_consecutive_runs_are_isolated_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    model = self._get_test_model(dims=2)
+    common_args = dict(
+        backend_name=_JAX,
+        model=model,
+        n_chains=2,
+        n_draws=4,
+        num_adaptation_steps=2,
+    )
+    first_steps = []
+    second_steps = []
+
+    self._run_sampling(
+        seed_int=1, step_callback=first_steps.append, **common_args
+    )
+    self._run_sampling(
+        seed_int=2, step_callback=second_steps.append, **common_args
+    )
+
+    self.assertLen(first_steps, 6)
+    self.assertLen(second_steps, 6)
+
+  def test_step_callback_exception_does_not_abort_sampling_jax(self):
+    self._set_backend_for_test(_JAX)
+
+    def failing_step_callback(n_divergent: int) -> None:
+      del n_divergent
+      raise ValueError("progress sink unavailable")
+
+    model = self._get_test_model(dims=2)
+    with warnings.catch_warnings(record=True) as caught:
+      warnings.simplefilter("always")
+      draws, _ = self._run_sampling(
+          backend_name=_JAX,
+          model=model,
+          n_chains=2,
+          n_draws=4,
+          num_adaptation_steps=2,
+          seed_int=7,
+          step_callback=failing_step_callback,
+      )
+
+    self.assertEqual(tuple(draws["x"].shape), (4, 2, 2))
+    # The callback failed on all 6 steps, but the failure is reported once.
+    runtime_warnings = [w for w in caught if w.category is RuntimeWarning]
+    self.assertLen(runtime_warnings, 1)
+    self.assertIn("progress sink unavailable", str(runtime_warnings[0].message))
 
 
 if __name__ == "__main__":

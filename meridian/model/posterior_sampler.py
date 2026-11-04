@@ -25,6 +25,7 @@ from meridian import constants
 from meridian.model import changepoints
 from meridian.model import context
 from meridian.model import equations
+from meridian.model import progress
 import numpy as np
 
 if TYPE_CHECKING:
@@ -152,6 +153,137 @@ class _HostResultAccumulator:
         name: buffer.reshape(leading_shape + buffer.shape[1:])
         for name, buffer in self._buffers.items()
     }
+
+
+class _PosteriorProgressReporter(
+    progress.ProgressReporter[progress.PosteriorSamplingProgress]
+):
+  """Reports `PosteriorSamplingProgress` snapshots to a progress callback.
+
+  The sampler notifies the reporter of its events: the start and the end of
+  each chain batch, every MCMC step on backends that can report them, and every
+  reconstruction batch. The reporter keeps the counters, builds the snapshots
+  and calls the callback. Every method is a no-op without a callback.
+  """
+
+  def __init__(
+      self,
+      callback: progress.PosteriorProgressCallback | None,
+      *,
+      n_chain_batches: int,
+      n_adapt: int,
+      n_burnin: int,
+      n_keep: int,
+      n_reconstruction_batches: int,
+  ):
+    super().__init__(callback)
+    self._n_chain_batches = n_chain_batches
+    self._n_adapt = n_adapt
+    self._n_burnin = n_burnin
+    self._n_keep = n_keep
+    self._n_reconstruction_batches = n_reconstruction_batches
+    self._chain_batch = 0
+    self._draw = 0
+    # Divergent transitions among the kept draws of the finished chain batches
+    # and of the chain batch in progress, respectively.
+    self._n_divergent_finished = 0
+    self._n_divergent_in_batch = 0
+    self._reconstruction_batch = 0
+
+  @property
+  def step_callback(self) -> Callable[[int], None] | None:
+    """The step callback for `backend.xla_windowed_adaptive_nuts`.
+
+    Returns:
+      A callable reporting one completed MCMC step, or `None` when there is no
+      progress callback, so that the backend runs its plain sampler.
+    """
+    return self._on_step if self.enabled else None
+
+  def start_chain_batch(self, chain_batch: int) -> None:
+    """Reports that sampling of the given chain batch is starting."""
+    if not self.enabled:
+      return
+    self._chain_batch = chain_batch
+    self._draw = 0
+    self._n_divergent_in_batch = 0
+    self._report()
+
+  def finish_chain_batch(self, trace: Mapping[str, backend.Tensor]) -> None:
+    """Reports that the current chain batch has been sampled.
+
+    Args:
+      trace: The sampler trace of the chain batch, with the post-adaptation
+        draws along the first axis. It provides the number of divergent
+        transitions, which is exact on every backend, whereas the step callbacks
+        only count them on backends that report steps.
+    """
+    if not self.enabled:
+      return
+    self._draw = self._n_adapt + self._n_burnin + self._n_keep
+    self._n_divergent_finished += int(
+        np.count_nonzero(
+            np.asarray(trace[constants.DIVERGING])[self._n_burnin :]
+        )
+    )
+    self._n_divergent_in_batch = 0
+    self._report()
+
+  def finish_reconstruction_batch(
+      self, batches_completed: int, n_batches: int
+  ) -> None:
+    """Reports that a batch of the posterior reconstruction has completed."""
+    if not self.enabled:
+      return
+    if n_batches != self._n_reconstruction_batches:
+      raise ValueError(
+          f"Reconstruction runs in {n_batches} batches, but the progress"
+          f" reporter expected {self._n_reconstruction_batches}."
+      )
+    self._reconstruction_batch = batches_completed
+    self._report()
+
+  def _on_step(self, n_divergent: int) -> None:
+    """Reports one completed MCMC step of the current chain batch."""
+    self._draw += 1
+    if self._stage() is progress.PosteriorSamplingStage.KEEP:
+      self._n_divergent_in_batch += n_divergent
+    self._report()
+
+  def _stage(self) -> progress.PosteriorSamplingStage:
+    """The stage of the last completed draw, or the first stage before any."""
+    if self._reconstruction_batch:
+      return progress.PosteriorSamplingStage.RECONSTRUCTION
+    draw = max(self._draw, 1)
+    if draw <= self._n_adapt:
+      return progress.PosteriorSamplingStage.ADAPTATION
+    if draw <= self._n_adapt + self._n_burnin:
+      return progress.PosteriorSamplingStage.BURNIN
+    return progress.PosteriorSamplingStage.KEEP
+
+  def _report(self) -> None:
+    """Calls the callback with the current snapshot, unless it is unchanged."""
+    self._emit(
+        progress.PosteriorSamplingProgress(
+            stage=self._stage(),
+            chain_batch=self._chain_batch,
+            n_chain_batches=self._n_chain_batches,
+            draw=self._draw,
+            n_adapt=self._n_adapt,
+            n_burnin=self._n_burnin,
+            n_keep=self._n_keep,
+            n_divergent=self._n_divergent_finished + self._n_divergent_in_batch,
+            reconstruction_batch=self._reconstruction_batch,
+            n_reconstruction_batches=self._n_reconstruction_batches,
+        )
+    )
+
+
+def _n_reconstruction_batches(n_total_draws: int, batch_size: int) -> int:
+  """Number of batches `_reconstruct_posteriors` runs for `n_total_draws`."""
+  if n_total_draws == 0:
+    return 0
+  return -(-n_total_draws // min(batch_size, n_total_draws))
 
 
 _compute_tau_g = equations.compute_tau_g
@@ -1068,6 +1200,7 @@ class PosteriorMCMCSampler:
       latents: Mapping[str, backend.Tensor],
       rng_handler: backend.RNGHandler,
       batch_size: int,
+      progress_callback: Callable[[int, int], None] | None = None,
   ) -> Mapping[str, np.ndarray]:
     """Reconstructs deterministic model variables from latent samples.
 
@@ -1095,6 +1228,8 @@ class PosteriorMCMCSampler:
         pinned, so reconstruction is deterministic given `latents`.
       batch_size: Maximum number of draws (flattened across chains) to evaluate
         per forward pass.
+      progress_callback: Optional callable invoked after each batch with the
+        number of batches completed so far and the total number of batches.
 
     Returns:
       Deterministic variables keyed by parameter name, as host (NumPy)
@@ -1116,6 +1251,7 @@ class PosteriorMCMCSampler:
     if n_total_draws == 0:
       return {}
     batch_len = min(batch_size, n_total_draws)
+    n_batches = _n_reconstruction_batches(n_total_draws, batch_size)
 
     def _forward(
         latent_chunk: Mapping[str, backend.Tensor],
@@ -1144,7 +1280,7 @@ class PosteriorMCMCSampler:
     observed_kpi = self._model_context.kpi_scaled
 
     results = _HostResultAccumulator(total_size=n_total_draws)
-    for start in range(0, n_total_draws, batch_len):
+    for batch, start in enumerate(range(0, n_total_draws, batch_len), start=1):
       # A smaller last batch would trigger a recompile, so shift it back to
       # keep it full and skip the draws already written.
       batch_start = min(start, n_total_draws - batch_len)
@@ -1158,6 +1294,8 @@ class PosteriorMCMCSampler:
       )
       for name, tensor in reconstructed.items():
         results.write(name, np.asarray(tensor)[n_overlap:], start=start)
+      if progress_callback is not None:
+        progress_callback(batch, n_batches)
 
     return results.to_arrays(leading_shape=(n_chains, n_draws))
 
@@ -1234,6 +1372,8 @@ class PosteriorMCMCSampler:
       parallel_iterations: int = 10,
       seed: Sequence[int] | int | None = None,
       reconstruction_batch_size: int = constants.DEFAULT_RECONSTRUCTION_BATCH_SIZE,
+      *,
+      progress_callback: progress.PosteriorProgressCallback | None = None,
       **pins,
   ) -> az.InferenceData:
     """Runs Markov Chain Monte Carlo (MCMC) sampling of posterior distributions.
@@ -1288,6 +1428,16 @@ class PosteriorMCMCSampler:
       reconstruction_batch_size: Maximum number of combined chain-and-draw
         samples to reconstruct in a single forward pass. Limits device OOMs
         caused by wide vectorized models.
+      progress_callback: Optional callable that receives a
+        `progress.PosteriorSamplingProgress` snapshot each time sampling
+        advances: when a chain batch starts, after every MCMC draw on the JAX
+          backend, when a chain batch finishes, and after each batch of the
+          posterior reconstruction. The callback must be fast and may run on a
+          different thread than the caller. Exceptions it raises are reported as
+          warnings and don't interrupt sampling. On the JAX backend, reporting
+          every draw holds the latent adaptation draws in device memory until
+          the chain batch finishes, which raises the latent draw-buffer memory
+          of a chain batch by `n_adapt / (n_burnin + n_keep)`.
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
 
@@ -1315,6 +1465,16 @@ class PosteriorMCMCSampler:
     rng_handler = backend.RNGHandler(seed)
     n_chains_list = [n_chains] if isinstance(n_chains, int) else n_chains
     total_chains = np.sum(n_chains_list)
+    reporter = _PosteriorProgressReporter(
+        progress_callback,
+        n_chain_batches=len(n_chains_list),
+        n_adapt=n_adapt,
+        n_burnin=n_burnin,
+        n_keep=n_keep,
+        n_reconstruction_batches=_n_reconstruction_batches(
+            int(total_chains) * n_keep, reconstruction_batch_size
+        ),
+    )
 
     # Clear joint distribution cache prior to sampling to ensure fresh state.
     self._joint_dist = None
@@ -1322,8 +1482,9 @@ class PosteriorMCMCSampler:
 
     states = []
     traces = []
-    for n_chains_batch in n_chains_list:
+    for chain_batch, n_chains_batch in enumerate(n_chains_list):
       kernel_seed = rng_handler.get_kernel_seed()
+      reporter.start_chain_batch(chain_batch)
 
       try:
         # Use sampling-optimized joint distribution (latents only) for NUTS.
@@ -1340,6 +1501,7 @@ class PosteriorMCMCSampler:
             unrolled_leapfrog_steps=unrolled_leapfrog_steps,
             parallel_iterations=parallel_iterations,
             seed=kernel_seed,
+            step_callback=reporter.step_callback,
             **pins,
         )
       except backend.errors.ResourceExhaustedError as error:
@@ -1349,6 +1511,7 @@ class PosteriorMCMCSampler:
             " https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error)"
         ) from error
       rng_handler = rng_handler.advance_handler()
+      reporter.finish_chain_batch(mcmc.trace)
       states.append(mcmc.all_states._asdict())
       traces.append(mcmc.trace)
 
@@ -1373,6 +1536,7 @@ class PosteriorMCMCSampler:
           latents=latents_for_reconstruction,
           rng_handler=rng_handler,
           batch_size=reconstruction_batch_size,
+          progress_callback=reporter.finish_reconstruction_batch,
       )
     except backend.errors.ResourceExhaustedError as error:
       raise MCMCOOMError(

@@ -24,6 +24,7 @@ from meridian import constants
 from meridian.model import changepoints
 from meridian.model import context
 from meridian.model import equations
+from meridian.model import progress
 import numpy as np
 
 # TODO: Break this circular dependency.
@@ -71,6 +72,50 @@ def _compute_in_draw_batches(
     )
     batches.append(batch[:, start - batch_start :])
   return backend.concatenate(batches, axis=1)  # pyrefly: ignore[bad-argument-type]
+
+
+class _PriorProgressReporter(
+    progress.ProgressReporter[progress.PriorSamplingProgress]
+):
+  """Reports `PriorSamplingProgress` snapshots to a progress callback.
+
+  Every method is a no-op without a callback.
+  """
+
+  def __init__(
+      self,
+      callback: progress.PriorProgressCallback | None,
+      *,
+      n_stages: int,
+  ):
+    super().__init__(callback)
+    self._n_stages = n_stages
+    self._stages_completed = 0
+
+  def finish_stage(
+      self,
+      stage: progress.PriorSamplingStage,
+      sampled: Mapping[str, backend.Tensor],
+  ) -> None:
+    """Reports that `stage` has completed.
+
+    Args:
+      stage: The stage that has just completed.
+      sampled: The samples drawn in the stage. The report waits for their
+        computation to finish, since the JAX backend dispatches it
+        asynchronously.
+    """
+    if not self.enabled:
+      return
+    backend.block_until_ready(sampled)
+    self._stages_completed += 1
+    self._emit(
+        progress.PriorSamplingProgress(
+            stage=stage,
+            stages_completed=self._stages_completed,
+            n_stages=self._n_stages,
+        )
+    )
 
 
 def _get_tau_g(
@@ -940,6 +985,8 @@ class PriorDistributionSampler:
       n_draws: int,
       seed: int | None = None,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
+      *,
+      progress_callback: progress.PriorProgressCallback | None = None,
   ) -> Mapping[str, backend.Tensor]:
     """Draws samples from prior distributions.
 
@@ -950,6 +997,10 @@ class PriorDistributionSampler:
         (https://github.com/tensorflow/probability/blob/main/PRNGS.md).
       batch_size: Maximum number of draws to process per batch when computing
         media/RF transformations and derived parameters. Must be at least 1.
+      progress_callback: Optional callable that receives a
+        `progress.PriorSamplingProgress` snapshot each time a sampling stage
+        (base, media, RF, ...) completes. Exceptions it raises are reported as
+        warnings and don't interrupt sampling.
 
     Returns:
       A mapping of prior parameter names to tensors of the samples.
@@ -977,6 +1028,43 @@ class PriorDistributionSampler:
     # when it is sampled.
     sample_shape = [1, n_draws]
     baseline_constraint = ctx.aggregate_baseline_constraint
+
+    # The treatment stages that follow the base stage, in sampling order, with
+    # whether the model has the corresponding treatment. The constrained path
+    # samples the non-media treatments in the base stage, before the knots.
+    treatment_stages = (
+        (
+            progress.PriorSamplingStage.MEDIA,
+            ctx.media_tensors.media is not None,
+            self._sample_media_priors,
+        ),
+        (
+            progress.PriorSamplingStage.RF,
+            ctx.rf_tensors.reach is not None,
+            self._sample_rf_priors,
+        ),
+        (
+            progress.PriorSamplingStage.ORGANIC_MEDIA,
+            ctx.organic_media_tensors.organic_media is not None,
+            self._sample_organic_media_priors,
+        ),
+        (
+            progress.PriorSamplingStage.ORGANIC_RF,
+            ctx.organic_rf_tensors.organic_reach is not None,
+            self._sample_organic_rf_priors,
+        ),
+        (
+            progress.PriorSamplingStage.NON_MEDIA_TREATMENTS,
+            baseline_constraint is None
+            and ctx.non_media_treatments_normalized is not None,
+            self._sample_non_media_treatments_priors,
+        ),
+    )
+    reporter = _PriorProgressReporter(
+        progress_callback,
+        n_stages=1 + sum(present for _, present, _ in treatment_stages),
+    )
+
     tau_g_excl_baseline = prior.tau_g_excl_baseline.sample(
         sample_shape=sample_shape, seed=rng_handler.get_next_seed()
     )
@@ -1075,30 +1163,12 @@ class PriorDistributionSampler:
           name=constants.MU_T,
       ).sample(seed=rng_handler.get_next_seed())
 
-    if ctx.media_tensors.media is not None:
-      base_vars |= self._sample_media_priors(
-          n_draws, rng_handler, batch_size=batch_size
-      )
-    if ctx.rf_tensors.reach is not None:
-      base_vars |= self._sample_rf_priors(
-          n_draws, rng_handler, batch_size=batch_size
-      )
-    if ctx.organic_media_tensors.organic_media is not None:
-      base_vars |= self._sample_organic_media_priors(
-          n_draws, rng_handler, batch_size=batch_size
-      )
-    if ctx.organic_rf_tensors.organic_reach is not None:
-      base_vars |= self._sample_organic_rf_priors(
-          n_draws, rng_handler, batch_size=batch_size
-      )
-    # The constrained path has already sampled the non-media treatments, before
-    # the knots.
-    if (
-        baseline_constraint is None
-        and ctx.non_media_treatments_normalized is not None
-    ):
-      base_vars |= self._sample_non_media_treatments_priors(
-          n_draws, rng_handler, batch_size=batch_size
-      )
+    reporter.finish_stage(progress.PriorSamplingStage.BASE, base_vars)
+    for stage, present, sample_priors in treatment_stages:
+      if not present:
+        continue
+      stage_vars = sample_priors(n_draws, rng_handler, batch_size=batch_size)
+      reporter.finish_stage(stage, stage_vars)
+      base_vars |= stage_vars
 
     return base_vars

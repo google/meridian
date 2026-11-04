@@ -24,5 +24,6 @@ from meridian.model import media
 from meridian.model import posterior_sampler
 from meridian.model import prior_distribution
 from meridian.model import prior_sampler
+from meridian.model import progress
 from meridian.model import spec
 from meridian.model import transformers
