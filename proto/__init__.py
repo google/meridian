@@ -16,7 +16,7 @@
 
 import importlib.metadata
 
-_FALLBACK_SCHEMA_VERSION = "1.6.0"
+_FALLBACK_SCHEMA_VERSION = "1.7.0"
 
 try:
   __version__ = importlib.metadata.version("mmm-proto-schema")

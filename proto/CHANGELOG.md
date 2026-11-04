@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-04
+
 *   Add the `balanced` field to `HoldoutConfig.RandomHoldout`, recording whether
     a random holdout was drawn balanced across time periods as well as geos.
 
@@ -132,4 +134,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.4.2]: https://github.com/google/meridian/releases/tag/proto-v1.4.2
 [1.5.0]: https://github.com/google/meridian/releases/tag/proto-v1.5.0
 [1.6.0]: https://github.com/google/meridian/releases/tag/proto-v1.6.0
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.6.0...HEAD
+[1.7.0]: https://github.com/google/meridian/releases/tag/proto-v1.7.0
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.7.0...HEAD
