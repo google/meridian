@@ -44,6 +44,9 @@ __all__ = [
 # Disable max row limitations in Altair.
 alt.data_transformers.disable_max_rows()
 
+# Field name for the zero-contribution legend entry in the bump chart.
+_ZERO_CONTRIBUTION_LEGEND_FIELD = 'zero_contribution_legend'
+
 
 def _get_channels_to_exclude(
     channels: xr.DataArray | None, spec: list[str] | str | None
@@ -1974,7 +1977,10 @@ class MediaSummary:
     This chart shows the relative rank of each channel's contribution,
     including the baseline, based on incremental outcome. Depending on the
     time_granularity, ranks are shown either weekly or at the end of each
-    quarter. Rank 1 represents the highest contribution.
+    quarter. Rank 1 represents the highest contribution. Zero-contribution
+    periods are indicated with unfilled circles (explained by a single legend
+    entry when present) and ties are broken by total incremental outcome across
+    the plotted time periods.
 
     Args:
       time_granularity: The granularity for the time axis. Options are `weekly`
@@ -1996,10 +2002,6 @@ class MediaSummary:
     )
     outcome_df[c.TIME] = pd.to_datetime(outcome_df[c.TIME])
 
-    outcome_df['rank'] = outcome_df.groupby(c.TIME)[c.INCREMENTAL_OUTCOME].rank(
-        method='first', ascending=False
-    )
-
     if time_granularity == c.QUARTERLY:
       # Filter data to keep only the last available date within each quarter
       # for a quarterly view of ranking changes.
@@ -2016,6 +2018,26 @@ class MediaSummary:
       tooltip_time_format = c.DATE_FORMAT
       tooltip_time_title = 'Week'
 
+    # Sort by time, incremental outcome, and total incremental outcome across
+    # all plotted time periods so ties (e.g. multiple zero-contribution
+    # channels) are broken stably by overall contribution rather than arbitrary
+    # row order.
+    total_outcome = plot_df.groupby(c.CHANNEL)[c.INCREMENTAL_OUTCOME].transform(
+        'sum'
+    )
+    plot_df = (
+        plot_df.assign(_total_outcome=total_outcome)
+        .sort_values(
+            by=[c.TIME, c.INCREMENTAL_OUTCOME, '_total_outcome', c.CHANNEL],
+            ascending=[True, False, False, True],
+        )
+        .drop(columns=['_total_outcome'])
+    )
+
+    plot_df[c.RANK] = plot_df.groupby(c.TIME)[c.INCREMENTAL_OUTCOME].rank(
+        method=c.RANK_METHOD_FIRST, ascending=False
+    )
+
     legend_order = [c.BASELINE] + sorted([
         channel
         for channel in plot_df[c.CHANNEL].unique()
@@ -2023,8 +2045,19 @@ class MediaSummary:
     ])
 
     plot = (
-        alt.Chart(plot_df, width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH)
-        .mark_line(point=True)
+        alt.Chart(plot_df)
+        .mark_line(
+            point=alt.OverlayMarkDef(
+                fill=alt.expr(
+                    f'datum.{c.INCREMENTAL_OUTCOME} == 0 ? "white" :'
+                    f' scale("color", datum.{c.CHANNEL})'
+                ),
+                stroke=alt.expr(
+                    f'datum.{c.INCREMENTAL_OUTCOME} == 0 ?'
+                    f' scale("color", datum.{c.CHANNEL}) : null'
+                ),
+            )
+        )
         .encode(
             x=alt.X(
                 f'{c.TIME}:T',
@@ -2036,7 +2069,7 @@ class MediaSummary:
                 ),
             ),
             y=alt.Y(
-                'rank:Q',
+                f'{c.RANK}:Q',
                 title='Contribution Rank',
                 axis=alt.Axis(
                     ticks=False,
@@ -2068,7 +2101,7 @@ class MediaSummary:
                     title=tooltip_time_title,
                 ),
                 alt.Tooltip(f'{c.CHANNEL}:N', title='Channel'),
-                alt.Tooltip('rank:O', title='Rank'),
+                alt.Tooltip(f'{c.RANK}:O', title='Rank'),
                 alt.Tooltip(
                     f'{c.INCREMENTAL_OUTCOME}:Q',
                     format=',.0f',
@@ -2076,16 +2109,50 @@ class MediaSummary:
                 ),
             ],
         )
-        .properties(
+    )
+
+    if (plot_df[c.INCREMENTAL_OUTCOME] == 0).any():
+      # Add a single legend entry explaining the unfilled circles. The legend
+      # layer has no x/y encoding and a transparent mark, so it only renders the
+      # legend symbol and does not affect the channel colour legend.
+      zero_legend = (
+          alt.Chart(
+              pd.DataFrame({
+                  _ZERO_CONTRIBUTION_LEGEND_FIELD: [
+                      summary_text.ZERO_CONTRIBUTION_LEGEND_LABEL
+                  ]
+              })
+          )
+          .mark_point(opacity=0)
+          .encode(
+              shape=alt.Shape(
+                  f'{_ZERO_CONTRIBUTION_LEGEND_FIELD}:N',
+                  scale=alt.Scale(range=['circle']),
+                  legend=alt.Legend(
+                      labelFontSize=c.AXIS_FONT_SIZE,
+                      labelFont=c.FONT_ROBOTO,
+                      title=None,
+                      orient='bottom',
+                      symbolFillColor='white',
+                      symbolStrokeColor=c.GREY_700,
+                      symbolStrokeWidth=2,
+                      symbolOpacity=1,
+                  ),
+              )
+          )
+      )
+      plot = alt.layer(plot, zero_legend)
+
+    return (
+        plot.properties(
+            width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH,
             title=formatter.custom_title_params(
                 summary_text.CHANNEL_CONTRIB_RANK_CHART_TITLE
-            )
+            ),
         )
         .configure_axis(titlePadding=c.PADDING_10, **formatter.TEXT_CONFIG)
         .configure_view(strokeOpacity=0)
     )
-
-    return plot
 
   def plot_contribution_waterfall_chart(self) -> alt.Chart:
     """Plots a waterfall chart of the contribution share per channel.

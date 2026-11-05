@@ -746,6 +746,7 @@ TOTAL_ROI = 'total_roi'
 TOTAL_CPIK = 'total_cpik'
 USE_KPI = 'use_kpi'
 USE_POSTERIOR = 'use_posterior'
+RANK = 'rank'
 
 # R-hat summary metrics.
 PARAM = 'param'
@@ -819,6 +820,7 @@ INDEPENDENT = 'independent'
 RESPONSE_CURVE_STEP_SIZE = 0.01
 OUTLIER_CLIP_FACTOR = 1.2
 MARK_CIRCLE_SIZE = 36
+RANK_METHOD_FIRST = 'first'
 
 
 # Font names.
