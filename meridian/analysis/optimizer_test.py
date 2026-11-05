@@ -27,6 +27,7 @@ import dataclasses
 import datetime
 import math
 import os
+import re
 import tempfile
 from typing import Any
 import warnings
@@ -6495,6 +6496,8 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
     assert cls.data.media_channel is not None
     assert cls.data.rf_channel is not None
     cls.dates = [str(date) for date in cls.data.time.values]
+    cls.media_0 = str(cls.data.media_channel.values[0])
+    cls.rf_channel = str(cls.data.rf_channel.values[0])
     # Media channel 0 has a changepoint at time period 5, and the RF channel at
     # 3 and 7. Media channel 1 has none.
     cls.mmm = model.Meridian(
@@ -6520,7 +6523,7 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
     cls._grids_by_effect = {}
 
   def _results(
-      self, effect: changepoint_effects.ChangepointEffect | None
+      self, effect: optimizer._ChangepointEffectArg | None
   ) -> optimizer.OptimizationResults:
     """Optimizes with `effect`, or without the argument for `None`.
 
@@ -6534,7 +6537,9 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
     Returns:
       The optimization results, computed once per effect.
     """
-    if effect not in self._results_by_effect:
+    # Mappings can't be dictionary keys, so effects are stored by description.
+    key = changepoint_effects._describe(effect)
+    if key not in self._results_by_effect:
       if effect is None:
         results = self.optimizer.optimize(
             use_posterior=False, use_optimal_frequency=False
@@ -6545,8 +6550,8 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
             use_optimal_frequency=False,
             _changepoint_effect=effect,
         )
-      self._results_by_effect[effect] = results
-    return self._results_by_effect[effect]
+      self._results_by_effect[key] = results
+    return self._results_by_effect[key]
 
   def _grid(
       self, effect: changepoint_effects.ChangepointEffect
@@ -6570,7 +6575,7 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
     return self._grids_by_effect[effect]
 
   def _incremental_outcome(
-      self, effect: changepoint_effects.ChangepointEffect | None
+      self, effect: optimizer._ChangepointEffectArg | None
   ) -> np.ndarray:
     """The mean incremental outcome at historical spend, by channel."""
     return (
@@ -6633,6 +6638,131 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
       with self.subTest(channel=channel):
         self.assertFalse(np.isclose(latest[channel], history[channel]))
 
+  def _mapping(self) -> dict[str, changepoint_effects.Interval]:
+    """Media channel 0 uses the interval of time period 2.
+
+    The RF channel isn't in the mapping, so it uses its latest interval.
+
+    Returns:
+      The mapping from channel names to intervals.
+    """
+    return {self.media_0: changepoint_effects.Interval(date=self.dates[2])}
+
+  def _describe_interval(self, channel: str, time_period: int) -> str:
+    """Writes a mapping of one channel to an interval, as in messages."""
+    date = tc.normalize_date(self.dates[time_period]).isoformat()
+    return f'{{{channel!r}: changepoint_effects.Interval(date={date!r})}}'
+
+  def test_mapping_gives_each_channel_its_own_interval(self):
+    mapping = self._incremental_outcome(self._mapping())
+    interval = self._incremental_outcome(
+        changepoint_effects.Interval(date=self.dates[2])
+    )
+    latest = self._incremental_outcome(changepoint_effects.Latest())
+    self.assertEqual(
+        self._results(self._mapping()).optimization_grid._changepoint_effect,
+        self._mapping(),
+    )
+    # Media channel 1 has no changepoints, so it matches both.
+    backend_test_utils.assert_allclose(mapping[:2], interval[:2], rtol=1e-5)
+    backend_test_utils.assert_allclose(mapping[2], latest[2], rtol=1e-5)
+    self.assertFalse(np.isclose(interval[0], latest[0]))
+    self.assertFalse(np.isclose(interval[2], latest[2]))
+
+  def test_grid_with_another_mapping_is_rebuilt(self):
+    grid = self._results(self._mapping()).optimization_grid
+    other = {self.rf_channel: changepoint_effects.Interval(date=self.dates[4])}
+    with self.assertWarnsRegex(
+        UserWarning,
+        re.escape(
+            'Given optimization grid was created with `changepoint_effect` ='
+            f' {self._describe_interval(self.media_0, 2)}, but optimization'
+            ' was called with `changepoint_effect` ='
+            f' {self._describe_interval(self.rf_channel, 4)}. A new grid will'
+            ' be created.'
+        ),
+    ):
+      results = self.optimizer.optimize(
+          use_posterior=False,
+          use_optimal_frequency=False,
+          optimization_grid=grid,
+          _changepoint_effect=other,
+      )
+    self.assertEqual(results.optimization_grid._changepoint_effect, other)
+
+  def test_grid_with_an_equal_mapping_is_reused(self):
+    grid = self._results(self._mapping()).optimization_grid
+    # The same interval, with the date given as a `datetime.date`.
+    equal = {
+        self.media_0: changepoint_effects.Interval(
+            date=tc.normalize_date(self.dates[2])
+        )
+    }
+    with warnings.catch_warnings():
+      warnings.simplefilter('error', UserWarning)
+      results = self.optimizer.optimize(
+          use_posterior=False,
+          use_optimal_frequency=False,
+          optimization_grid=grid,
+          _changepoint_effect=equal,
+      )
+    self.assertIs(results.optimization_grid, grid)
+
+  def test_mapping_with_channels_without_changepoints_raises(self):
+    assert self.data.media_channel is not None
+    media_1 = str(self.data.media_channel.values[1])
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        'The `changepoint_effect` mapping has channels without changepoints:'
+        f' [{media_1!r}]. Its keys must be channels with changepoints:'
+        f' [{self.media_0!r}, {self.rf_channel!r}].',
+    ):
+      self.optimizer.optimize(
+          use_posterior=False,
+          _changepoint_effect={
+              media_1: changepoint_effects.Interval(date=self.dates[2])
+          },
+      )
+
+  def test_mapping_is_checked_before_the_effect_is_used(self):
+    assert self.data.media_channel is not None
+    media_1 = str(self.data.media_channel.values[1])
+    effect = {media_1: changepoint_effects.Interval(date=self.dates[2])}
+    with self.assertRaisesRegex(ValueError, 'channels without changepoints'):
+      with self.optimizer._use_changepoint_effect(effect):
+        self.fail('The mapping was used without being checked.')
+
+  def test_mapping_to_non_interval_raises(self):
+    effect: dict[str, Any] = {self.media_0: changepoint_effects.Latest()}
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        f'`changepoint_effect[{self.media_0!r}]` must be'
+        ' `changepoint_effects.Interval(date=...)`, got'
+        f' {changepoint_effects.Latest()!r}.',
+    ):
+      self.optimizer.create_optimization_grid(
+          use_posterior=False,
+          _changepoint_effect=effect,
+      )
+
+  def test_mapping_with_a_date_after_the_training_data_raises(self):
+    # The data is weekly, so its last day is 6 days after the last date.
+    last_day = tc.normalize_date(self.dates[-1]) + datetime.timedelta(days=6)
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        f'`changepoint_effect[{self.rf_channel!r}]`,'
+        " `changepoint_effects.Interval(date='2100-01-04')`, must be a date in"
+        f' the training data ({self.dates[0]} to {last_day.isoformat()}). To'
+        " use the effect of the channel's latest interval, leave"
+        f' {self.rf_channel!r} out of the mapping.',
+    ):
+      self.optimizer.create_optimization_grid(
+          use_posterior=False,
+          _changepoint_effect={
+              self.rf_channel: changepoint_effects.Interval(date='2100-01-04')
+          },
+      )
+
   def test_interval_of_the_last_date_matches_latest(self):
     backend_test_utils.assert_allclose(
         self._incremental_outcome(
@@ -6643,13 +6773,14 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
     )
 
   @parameterized.product(
-      name=['latest', 'history', 'interval'], selected=[False, True]
+      name=['latest', 'history', 'interval', 'mapping'], selected=[False, True]
   )
   def test_media_grid_matches_the_analyzer(self, name: str, selected: bool):
     effect = {
         'latest': changepoint_effects.Latest(),
         'history': changepoint_effects.History(),
         'interval': changepoint_effects.Interval(date=self.dates[2]),
+        'mapping': self._mapping(),
     }[name]
     selected_geos = [str(self.data.geo.values[0])] if selected else None
     selected_times = self.dates[4:8] if selected else None
@@ -6848,17 +6979,23 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
     default = budget_optimizer.optimize(
         use_posterior=False, use_optimal_frequency=False
     )
-    history = budget_optimizer.optimize(
-        use_posterior=False,
-        use_optimal_frequency=False,
-        _changepoint_effect=changepoint_effects.History(),
-    )
     self.assertIsNone(default.optimization_grid._changepoint_effect)
-    self.assertIsNone(history.optimization_grid._changepoint_effect)
-    np.testing.assert_array_equal(
-        default.optimized_data.incremental_outcome.values,
-        history.optimized_data.incremental_outcome.values,
-    )
+    # Neither the channel nor the date of the mapping is checked.
+    for effect in (
+        changepoint_effects.History(),
+        {'Search': changepoint_effects.Interval(date='2100-01-04')},
+    ):
+      with self.subTest(effect=changepoint_effects._describe(effect)):
+        results = budget_optimizer.optimize(
+            use_posterior=False,
+            use_optimal_frequency=False,
+            _changepoint_effect=effect,
+        )
+        self.assertIsNone(results.optimization_grid._changepoint_effect)
+        np.testing.assert_array_equal(
+            default.optimized_data.incremental_outcome.values,
+            results.optimized_data.incremental_outcome.values,
+        )
 
 
 if __name__ == '__main__':

@@ -226,6 +226,32 @@ class RhatSummaryDataFrame(pd.DataFrame):
     return super().__getitem__(key)
 
 
+def _gather_by_channel(
+    coefficients: backend.Tensor, time_indices: np.ndarray
+) -> backend.Tensor:
+  """Takes the coefficients of a separate time period for each channel.
+
+  Args:
+    coefficients: The coefficients by time period, shape `(..., n_geos,
+      n_times, n_channels)`.
+    time_indices: For each output time period and channel, the time period to
+      take the coefficient of, shape `(n_output_times, n_channels)`.
+
+  Returns:
+    The coefficients, shape `(..., n_geos, n_output_times, n_channels)`.
+  """
+  *outer_shape, n_times, n_channels = coefficients.shape
+  # Joining the time and channel axes lets one gather take each channel's own
+  # time periods.
+  flat_indices = time_indices * n_channels + np.arange(n_channels)
+  flat = backend.reshape(
+      coefficients,  # pyrefly: ignore[bad-argument-type]
+      (*outer_shape, n_times * n_channels),
+  )
+  gathered = backend.gather(flat, flat_indices.reshape(-1), axis=-1)
+  return backend.reshape(gathered, (*outer_shape, *time_indices.shape))
+
+
 class Analyzer:
   """Runs calculations to analyze the raw data after fitting the model."""
 
@@ -256,9 +282,9 @@ class Analyzer:
     # `changepoint_effects.History()`. This is `None` then, and is only set
     # while `_use_changepoint_effect` overrides it, for example when
     # `BudgetOptimizer` calls the Analyzer.
-    self._changepoint_effect: changepoint_effects.ChangepointEffect | None = (
-        None
-    )
+    self._changepoint_effect: (
+        changepoint_effects._EffectOrIntervals | None  # pylint: disable=protected-access
+    ) = None
 
     if meridian is not None:
       self._inference_data = inference_data or meridian.inference_data
@@ -290,7 +316,7 @@ class Analyzer:
       *,
       use_posterior: bool = True,
       batch_size: int = constants.DEFAULT_BATCH_SIZE,
-      time_indices: np.ndarray | None = None,
+      time_indices: np.ndarray | Mapping[str, np.ndarray] | None = None,
   ) -> Iterator[DistributionTensors]:
     """Yields batched DistributionTensors for the given parameters.
 
@@ -307,8 +333,10 @@ class Analyzer:
       use_posterior: Whether to use posterior or prior parameters.
       batch_size: The batch size. Must be a positive integer.
       time_indices: The positions of the model's time periods to give the
-        coefficients of, from `_changepoint_time_indices`. By default, all of
-        the model's time periods.
+        coefficients of, from `_changepoint_time_indices`: the same positions
+        for all channels, or a mapping from `beta_gm` and `beta_grf` to
+        positions of shape `(n_times, n_channels)`, with a column for each
+        channel. By default, all of the model's time periods.
 
     Yields:
       DistributionTensors containing the sliced parameters for the
@@ -361,7 +389,9 @@ class Analyzer:
             zeta_x=_batch(zeta, draws),
             varphi_x=_batch(varphi, draws),
         )
-        if time_indices is not None:
+        if isinstance(time_indices, Mapping):
+          batch[beta] = _gather_by_channel(batch[beta], time_indices[beta])
+        elif time_indices is not None:
           batch[beta] = backend.gather(batch[beta], time_indices, axis=-2)
       yield DistributionTensors(**batch)
     # pylint: enable=protected-access
@@ -398,7 +428,8 @@ class Analyzer:
 
   @contextlib.contextmanager
   def _use_changepoint_effect(
-      self, effect: changepoint_effects.ChangepointEffect
+      self,
+      effect: changepoint_effects._EffectOrIntervals,  # pylint: disable=protected-access
   ) -> Iterator[None]:
     """Uses `effect` for the channels with changepoints inside the `with` block.
 
@@ -408,7 +439,11 @@ class Analyzer:
     `with` block runs use the effect too.
 
     Args:
-      effect: The effect that the channels with changepoints use.
+      effect: The effect that the channels with changepoints use. For a mapping
+        from channel names to `changepoint_effects.Interval`, each channel in
+        the mapping uses the coefficients of its own interval for every time
+        period, and the other channels with changepoints use the coefficients
+        of their latest interval.
 
     Yields:
       Nothing.
@@ -420,9 +455,24 @@ class Analyzer:
     finally:
       self._changepoint_effect = previous
 
+  @property
+  def _changepoint_channels(self) -> list[str]:
+    """The names of the channels with changepoints: paid media, then RF."""
+    # pylint: disable=protected-access
+    infos = (
+        self.model_context._media_changepoint_info,
+        self.model_context._rf_changepoint_info,
+    )
+    # pylint: enable=protected-access
+    channels: list[str] = []
+    for info in infos:
+      if info is not None:
+        channels.extend(info.channel_names)
+    return channels
+
   def _changepoint_time_indices(
       self, time: Sequence[str] | None
-  ) -> np.ndarray | None:
+  ) -> np.ndarray | dict[str, np.ndarray] | None:
     """Finds the model time periods whose coefficients the data uses.
 
     Channels with changepoints have a separate coefficient in each time period
@@ -437,24 +487,46 @@ class Analyzer:
     Returns:
       For each of the data's time periods, the position of the model time
       period whose coefficient it uses. `None` if those are the model's own
-      time periods in order, or if no channel has changepoints.
+      time periods in order, or if no channel has changepoints. For a mapping
+      from channel names to `changepoint_effects.Interval`, a dictionary from
+      `beta_gm` and `beta_grf` to positions of shape `(n_times, n_channels)`,
+      with a column for each channel of the type.
 
     Raises:
       ValueError: If the data has time periods that the effect, or matching by
-        date, isn't defined for.
+        date, isn't defined for, or if the mapping has channels without
+        changepoints.
     """
     if not self._has_changepoints:
       return None
     effect = self._changepoint_effect
     if effect is not None:
       time_coordinates = self.model_context.input_data.time_coordinates
-      indices = changepoint_effects._time_indices(  # pylint: disable=protected-access
+      # pylint: disable=protected-access
+      if isinstance(effect, Mapping):
+        changepoint_effects._check_channels(effect, self._changepoint_channels)
+        input_data = self.model_context.input_data
+        n_dates = len(time_coordinates.all_dates if time is None else time)
+        return {
+            beta: changepoint_effects._channel_time_indices(
+                effect,
+                time_coordinates=time_coordinates,
+                channels=self.model_context._coordinate_names(channels),
+                n_dates=n_dates,
+            )
+            for beta, channels in (
+                (constants.BETA_GM, input_data.media_channel),
+                (constants.BETA_GRF, input_data.rf_channel),
+            )
+        }
+      indices = changepoint_effects._time_indices(
           effect,
           time_coordinates=time_coordinates,
           dates=(
               None if time is None else [tc.normalize_date(t) for t in time]
           ),
       )
+      # pylint: enable=protected-access
       if np.array_equal(indices, np.arange(len(time_coordinates.all_dates))):
         return None
       return indices

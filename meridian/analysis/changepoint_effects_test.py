@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import datetime
 
 from absl.testing import absltest
@@ -94,7 +95,8 @@ class CheckEffectTest(parameterized.TestCase):
         TypeError,
         "`changepoint_effect` must be `changepoint_effects.Latest()`,"
         " `changepoint_effects.History()` or"
-        " `changepoint_effects.Interval(date=...)`, got"
+        " `changepoint_effects.Interval(date=...)`, or a mapping from channel"
+        " names to `changepoint_effects.Interval(date=...)`, got"
         f" {effect!r}. Did you mean `{suggestion}`?",
     ):
       changepoint_effects._check_effect(effect)
@@ -111,9 +113,87 @@ class CheckEffectTest(parameterized.TestCase):
         TypeError,
         "`changepoint_effect` must be `changepoint_effects.Latest()`,"
         " `changepoint_effects.History()` or"
-        f" `changepoint_effects.Interval(date=...)`, got {effect!r}.",
+        " `changepoint_effects.Interval(date=...)`, or a mapping from channel"
+        f" names to `changepoint_effects.Interval(date=...)`, got {effect!r}.",
     ):
       changepoint_effects._check_effect(effect)
+
+  def test_mapping_is_returned_as_a_read_only_copy(self):
+    mapping = {
+        "TV": changepoint_effects.Interval(date="2024-01-08"),
+        "YouTube": changepoint_effects.Interval(date="2024-02-05"),
+    }
+    search = changepoint_effects.Interval(date="2024-03-04")
+    checked = changepoint_effects._check_effect(mapping)
+    self.assertIsInstance(checked, changepoint_effects._Intervals)
+    self.assertEqual(checked, mapping)
+    self.assertEqual(checked, changepoint_effects._check_effect(dict(mapping)))
+    self.assertNotEqual(checked, changepoint_effects._check_effect({}))
+    self.assertEqual(repr(checked), repr(mapping))
+    mapping["Search"] = search
+    self.assertEqual(list(checked), ["TV", "YouTube"])
+    self.assertLen(checked, 2)
+    with self.assertRaises(TypeError):
+      checked["Search"] = search  # pyrefly: ignore[unsupported-operation]
+
+  def test_mapping_copy_can_be_copied(self):
+    checked = changepoint_effects._check_effect(
+        {"TV": changepoint_effects.Interval(date="2024-01-08")}
+    )
+    # `copy.deepcopy` uses the same protocol as `pickle`.
+    self.assertEqual(copy.copy(checked), checked)
+    self.assertEqual(copy.deepcopy(checked), checked)
+
+  def test_mapping_channel_names_become_strings(self):
+    interval = changepoint_effects.Interval(date="2024-01-08")
+    checked = changepoint_effects._check_effect({np.str_("TV"): interval})
+    self.assertEqual(
+        changepoint_effects._describe(checked),
+        "{'TV': changepoint_effects.Interval(date='2024-01-08')}",
+    )
+    assert isinstance(checked, changepoint_effects._Intervals)
+    self.assertEqual([type(channel) for channel in checked], [str])
+
+  def test_empty_mapping_is_returned(self):
+    self.assertEqual(changepoint_effects._check_effect({}), {})
+
+  @parameterized.named_parameters(
+      ("string", "interval"),
+      ("latest", changepoint_effects.Latest()),
+      ("date", "2024-01-08"),
+  )
+  def test_mapping_to_non_interval_raises(self, value):
+    with self.assertRaisesWithLiteralMatch(
+        TypeError,
+        "`changepoint_effect['YouTube']` must be"
+        f" `changepoint_effects.Interval(date=...)`, got {value!r}.",
+    ):
+      changepoint_effects._check_effect({
+          "TV": changepoint_effects.Interval(date="2024-01-08"),
+          "YouTube": value,
+      })
+
+
+class CheckChannelsTest(absltest.TestCase):
+
+  def test_channels_with_changepoints_pass(self):
+    changepoint_effects._check_channels(
+        {"YouTube": changepoint_effects.Interval(date="2024-01-08")},
+        ("TV", "YouTube"),
+    )
+
+  def test_channels_without_changepoints_raise(self):
+    interval = changepoint_effects.Interval(date="2024-01-08")
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "The `changepoint_effect` mapping has channels without changepoints:"
+        " ['Search', 'Display']. Its keys must be channels with changepoints:"
+        " ['TV', 'YouTube'].",
+    ):
+      changepoint_effects._check_channels(
+          {"Search": interval, "TV": interval, "Display": interval},
+          ("TV", "YouTube"),
+      )
 
 
 class DescribeTest(parameterized.TestCase):
@@ -131,9 +211,79 @@ class DescribeTest(parameterized.TestCase):
           "changepoint_effects.Interval(date='2024-01-08')",
       ),
       ("none", None, "None"),
+      (
+          "mapping",
+          changepoint_effects._Intervals({
+              "TV": changepoint_effects.Interval(date="2024-01-08"),
+              "YouTube": changepoint_effects.Interval(date="2024-02-05"),
+          }),
+          (
+              "{'TV': changepoint_effects.Interval(date='2024-01-08'),"
+              " 'YouTube': changepoint_effects.Interval(date='2024-02-05')}"
+          ),
+      ),
+      ("empty_mapping", {}, "{}"),
   )
   def test_describe(self, effect, expected):
     self.assertEqual(changepoint_effects._describe(effect), expected)
+
+
+class ChannelTimeIndicesTest(absltest.TestCase):
+
+  def test_date_before_the_training_data_raises(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`changepoint_effect['TV']`,"
+        " `changepoint_effects.Interval(date='2023-12-31')`, must be a date in"
+        " the training data (2024-01-01 to 2024-03-10).",
+    ):
+      changepoint_effects._channel_time_indices(
+          {"TV": changepoint_effects.Interval(date="2023-12-31")},
+          time_coordinates=_weekly(),
+          channels=["TV"],
+          n_dates=1,
+      )
+
+  def test_each_channel_uses_its_own_interval(self):
+    effect = {
+        "YouTube": changepoint_effects.Interval(date="2024-02-08"),
+        "TV": changepoint_effects.Interval(date="2024-01-08"),
+    }
+    # "Search" isn't in the mapping, so it uses the last time period.
+    np.testing.assert_array_equal(
+        changepoint_effects._channel_time_indices(
+            effect,
+            time_coordinates=_weekly(),
+            channels=["TV", "Search", "YouTube"],
+            n_dates=2,
+        ),
+        [[1, 9, 5], [1, 9, 5]],
+    )
+
+  def test_no_channels_gives_empty_indices(self):
+    indices = changepoint_effects._channel_time_indices(
+        {}, time_coordinates=_weekly(), channels=[], n_dates=3
+    )
+    self.assertEqual(indices.shape, (3, 0))
+    self.assertEqual(indices.dtype, int)
+
+  def test_date_after_the_training_data_raises(self):
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "`changepoint_effect['YouTube']`,"
+        " `changepoint_effects.Interval(date='2024-03-11')`, must be a date in"
+        " the training data (2024-01-01 to 2024-03-10). To use the effect of"
+        " the channel's latest interval, leave 'YouTube' out of the mapping.",
+    ):
+      changepoint_effects._channel_time_indices(
+          {
+              "TV": changepoint_effects.Interval(date="2024-01-08"),
+              "YouTube": changepoint_effects.Interval(date="2024-03-11"),
+          },
+          time_coordinates=_weekly(),
+          channels=["TV", "YouTube"],
+          n_dates=1,
+      )
 
 
 class TimeIndicesTest(parameterized.TestCase):

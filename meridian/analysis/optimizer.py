@@ -56,6 +56,9 @@ __all__ = [
 alt.data_transformers.disable_max_rows()
 
 _SpendConstraint: TypeAlias = float | Sequence[float]
+# A changepoint effect, or a mapping from channel names to
+# `changepoint_effects.Interval` that gives each channel its own interval.
+_ChangepointEffectArg: TypeAlias = changepoint_effects._EffectOrIntervals  # pylint: disable=protected-access
 
 # Relative tolerance (with respect to the maximum absolute incremental outcome
 # of a channel) used when checking whether a response curve is monotonic.
@@ -144,10 +147,11 @@ class OptimizationGrid:
   selected_times: Sequence[str] | None
   max_frequency: float | None = None
   # The effect that the channels with changepoints use in this grid, or `None`
-  # for a model without changepoints.
+  # for a model without changepoints. A mapping from channel names to
+  # `changepoint_effects.Interval` is stored as a read-only copy.
   # TODO: Make it public when time-varying media effects are
   # released.
-  _changepoint_effect: changepoint_effects.ChangepointEffect | None = None
+  _changepoint_effect: _ChangepointEffectArg | None = None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -1483,7 +1487,7 @@ def _with_changepoint_effect(method: _Method) -> _Method:
   def wrapper(
       self: 'BudgetOptimizer',
       *args: Any,
-      _changepoint_effect: changepoint_effects.ChangepointEffect | None = None,
+      _changepoint_effect: _ChangepointEffectArg | None = None,
       **kwargs: Any,
   ) -> Any:
     with self._use_changepoint_effect(_changepoint_effect) as effect:  # pylint: disable=protected-access
@@ -1534,26 +1538,31 @@ class BudgetOptimizer:
 
   @contextlib.contextmanager
   def _use_changepoint_effect(
-      self, effect: changepoint_effects.ChangepointEffect | None
-  ) -> Iterator[changepoint_effects.ChangepointEffect | None]:
+      self, effect: _ChangepointEffectArg | None
+  ) -> Iterator[_ChangepointEffectArg | None]:
     """Uses `effect` for the channels with changepoints inside the `with` block.
 
     Args:
-      effect: The effect that the channels with changepoints use. `None` means
+      effect: The effect that the channels with changepoints use, or a mapping
+        from channel names to `changepoint_effects.Interval`, where each
+        channel uses its own interval and the other channels with changepoints
+        use `changepoint_effects.Latest()`. `None` means
         `changepoint_effects.Latest()`.
 
     Yields:
-      The effect used: `effect`, `changepoint_effects.Latest()` for `None`, or
-      `None` for a model without changepoints, where every effect gives the
-      same results.
+      The effect used: `effect` (a read-only copy for a mapping),
+      `changepoint_effects.Latest()` for `None`, or `None` for a model without
+      changepoints, where every effect gives the same results.
 
     Raises:
-      TypeError: If `effect` isn't a changepoint effect.
-      ValueError: If the date of an `Interval` isn't in the training data.
+      TypeError: If `effect` isn't a changepoint effect or a mapping from
+        channel names to `changepoint_effects.Interval`.
+      ValueError: If the date of an `Interval` isn't in the training data, or
+        if the mapping has channels without changepoints.
     """
     # pylint: disable=protected-access
     if effect is not None:
-      changepoint_effects._check_effect(effect)
+      effect = changepoint_effects._check_effect(effect)
     # Mock analyzers in tests may lack the attribute or have a truthy one.
     has_changepoints = getattr(self._analyzer, '_has_changepoints', False)
     if not (isinstance(has_changepoints, bool) and has_changepoints):
@@ -1561,12 +1570,10 @@ class BudgetOptimizer:
       return
     if effect is None:
       effect = changepoint_effects.Latest()
-    if isinstance(effect, changepoint_effects.Interval):
-      # Fails early for a date outside the training data.
-      changepoint_effects._interval_time_index(
-          effect, self._analyzer.model_context.input_data.time_coordinates
-      )
     with self._analyzer._use_changepoint_effect(effect):
+      # Fails early if the effect isn't defined for the model, for example for
+      # a date outside the training data.
+      self._analyzer._changepoint_time_indices(None)
       yield effect
     # pylint: enable=protected-access
 
@@ -1642,8 +1649,11 @@ class BudgetOptimizer:
       optimization_grid: OptimizationGrid | None = None,
       *,
       # TODO: Rename it to `changepoint_effect` and document it
-      # when time-varying media effects are released.
-      _changepoint_effect: changepoint_effects.ChangepointEffect | None = None,
+      # when time-varying media effects are released. It takes a changepoint
+      # effect, or a mapping from channel names to
+      # `changepoint_effects.Interval` that gives each channel its own
+      # interval.
+      _changepoint_effect: _ChangepointEffectArg | None = None,
   ) -> OptimizationResults:
     """Finds the optimal budget allocation that maximizes outcome.
 
@@ -2117,7 +2127,7 @@ class BudgetOptimizer:
       max_frequency: float | None,
       use_kpi: bool,
       optimization_grid: OptimizationGrid,
-      changepoint_effect: changepoint_effects.ChangepointEffect | None,
+      changepoint_effect: _ChangepointEffectArg | None,
   ) -> bool:
     """Checks if the grid is valid for the optimization scenario."""
 
@@ -2298,8 +2308,11 @@ class BudgetOptimizer:
       batch_size: int = c.DEFAULT_BATCH_SIZE,
       *,
       # TODO: Rename it to `changepoint_effect` and document it
-      # when time-varying media effects are released.
-      _changepoint_effect: changepoint_effects.ChangepointEffect | None = None,
+      # when time-varying media effects are released. It takes a changepoint
+      # effect, or a mapping from channel names to
+      # `changepoint_effects.Interval` that gives each channel its own
+      # interval.
+      _changepoint_effect: _ChangepointEffectArg | None = None,
   ) -> OptimizationGrid:
     """Creates an `OptimizationGrid` for optimization.
 
