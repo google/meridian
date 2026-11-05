@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Sequence
 import copy
 import dataclasses
 import os
@@ -1165,6 +1166,122 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
           spend_constraint_upper=0.1,
       )
       self.assertIsNone(invalid_grid)
+
+  def _create_two_week_grid(
+      self,
+      hist_spend: Sequence[float],
+      multipliers: Sequence[float] = (0.0, 4.29),
+  ) -> weekly_optimization_grid.WeeklyOptimizationGrid:
+    times = ['2024-01-01', '2024-01-08']
+    channels = [f'ch_{i}' for i in range(len(hist_spend))]
+    hist_spend_arr = np.asarray(hist_spend, dtype=float)
+    return weekly_optimization_grid.WeeklyOptimizationGrid(
+        incremental_outcome=xr.DataArray(
+            np.ones((len(channels), len(multipliers), len(times))),
+            coords={
+                c.CHANNEL: channels,
+                c.SPEND_MULTIPLIER: list(multipliers),
+                c.TIME: times,
+            },
+            dims=[c.CHANNEL, c.SPEND_MULTIPLIER, c.TIME],
+        ),
+        rf_incremental_outcome=None,
+        nonoptimized_spend=xr.DataArray(
+            np.stack([hist_spend_arr / 2.0, hist_spend_arr / 2.0], axis=1),
+            coords={c.CHANNEL: channels, c.TIME: times},
+            dims=[c.CHANNEL, c.TIME],
+        ),
+        use_kpi=False,
+        use_posterior=True,
+        multiplier_step=0.001,
+        max_budget_percent_decrease=0.9,
+        max_budget_percent_increase=1.145,
+        max_constraint_variation=1.0,
+    )
+
+  def test_validate_optimization_bounds_accepts_small_channel_near_rounding_step(
+      self,
+  ):
+    # At budget=1,403,360 (round_factor=-3), ch_3 has historical spend 1,400,
+    # an upper request bound of 5,000, and unrounded grid coverage up to
+    # 4.29 * 1,400 = 6,006 (rounded to 6,000). Rounding historical spend before
+    # multiplying by 4.29 would shrink the grid ceiling to 4,000 and reject.
+    weekly_grid = self._create_two_week_grid(
+        [300_000.0, 120_000.0, 79_800.0, 1_400.0]
+    )
+
+    grid = weekly_grid.to_optimization_grid(
+        budget=1_403_360.0,
+        spend_constraint_upper=0.3,
+    )
+
+    self.assertIsNotNone(grid)
+
+  def test_validate_optimization_bounds_rejects_bound_above_unrounded_grid_max(
+      self,
+  ):
+    # At budget=1,403,360 (round_factor=-3), ch_2 has historical spend 79,800,
+    # so the grid covers up to 4.29 * 79,800 = 342,342 (rounded to 342,000).
+    # An upper bound of 343,000 must be rejected even though rounding 79,800 to
+    # 80,000 first would yield 4.29 * 80,000 = 343,200 (rounded to 343,000).
+    weekly_grid = self._create_two_week_grid(
+        [300_000.0, 120_000.0, 79_800.0, 1_400.0]
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Upper bound 343000 for channel ch_2 is above the maximum spend of the'
+        ' grid 342000.0.',
+    ):
+      grid = weekly_grid.to_optimization_grid(
+          budget=1_403_360.0,
+          spend_constraint_upper=[0.3, 0.3, 0.538, 0.3],
+      )
+
+    self.assertIsNone(grid)
+
+  def test_validate_optimization_bounds_rejects_channel_with_zero_rounded_spend_exceeding_grid_max(
+      self,
+  ):
+    # At budget=1,403,360 (round_factor=-3), ch_3 has historical spend 400
+    # (which rounds to 0 on its own), a budget-scaled spend of 1,120, and an
+    # upper request bound of round(1,120 * 1.3, -3) = 1,000. When the grid only
+    # covers up to 1.0 * 400 = 400 (rounded to 0), ch_3 is still validated
+    # because its unrounded historical spend is non-zero.
+    weekly_grid = self._create_two_week_grid(
+        [300_000.0, 120_000.0, 80_800.0, 400.0],
+        multipliers=(0.0, 1.0),
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Upper bound 1000 for channel ch_3 is above the maximum spend of the'
+        ' grid 0.0.',
+    ):
+      grid = weekly_grid.to_optimization_grid(
+          budget=1_403_360.0,
+          spend_constraint_lower=0.0,
+          spend_constraint_upper=0.3,
+      )
+
+    self.assertIsNone(grid)
+
+  def test_validate_optimization_bounds_skips_channel_with_zero_spend(
+      self,
+  ):
+    weekly_grid = self._create_two_week_grid([300_000.0, 120_000.0, 80_800.0])
+
+    # Even with non-zero bounds passed to _validate_optimization_bounds,
+    # a channel with exact zero historical spend is skipped (matching
+    # _create_grids).
+    self.assertTrue(
+        weekly_grid._validate_optimization_bounds(  # pylint: disable=protected-access
+            lower_bound=np.array([0.0, 0.0, 1_000.0]),
+            upper_bound=np.array([300_000.0, 120_000.0, 1_000.0]),
+            hist_spend=np.array([300_000.0, 120_000.0, 0.0]),
+            round_factor=-3,
+        )
+    )
 
   def test_create_with_start_end_date(self):
     model_times = (
