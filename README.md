@@ -115,7 +115,7 @@ started quickly with using Meridian:
 [7]: https://developers.google.com/meridian/docs/post-modeling/model-fit
 [8]: https://developers.google.com/meridian/docs/scenario-planning/meridian-scenario-planner
 [9]: https://developers.google.com/meridian/docs/migrate
-[10]: https://colab.sandbox.google.com/github/google/meridian/blob/main/demo/Meridian_Full_Funnel.ipynb
+[10]: https://developers.google.com/meridian/notebook/meridian-full-funnel
 [11]: https://developers.google.com/meridian/reference/api/meridian
 [12]: https://developers.google.com/meridian/docs/reference-list
 
