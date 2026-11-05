@@ -15,6 +15,7 @@
 from collections.abc import Callable, Collection, Mapping, Sequence
 import dataclasses
 import datetime
+import logging
 import re
 import types
 from typing import Any
@@ -4016,6 +4017,24 @@ def _normal_prior() -> backend.tfd.Distribution:
   )
 
 
+def _log_normal_prior() -> backend.tfd.Distribution:
+  """A custom prior with non-negative support."""
+  return backend.tfd.LogNormal(
+      backend.np_float_dtype(0.5), backend.np_float_dtype(0.5)
+  )
+
+
+_NON_ROI_ERROR = (
+    "When KPI is non-revenue, revenue per kpi data is missing, and you use"
+    " non-roi prior type for at least one of the paid channels, you should set"
+    " custom priors "
+)
+_ROI_ERROR = (
+    "When KPI is non-revenue, revenue per kpi data is missing, and you use roi"
+    " prior type for all paid channels, you should set custom priors "
+)
+
+
 class ChangepointsTest(
     test_utils.MeridianTestCase,
     model_test_data.WithInputDataSamples,
@@ -4597,162 +4616,508 @@ class ChangepointsTest(
           prior_type="mroi",
       )
 
-  def test_priors_used_by_channels_with_changepoints_are_not_ignored(self):
-    def custom_prior() -> backend.tfd.Distribution:
-      return backend.tfd.LogNormal(
-          backend.np_float_dtype(0.5), backend.np_float_dtype(0.5)
-      )
+  def _build_logs(
+      self,
+      model_spec: spec.ModelSpec,
+      data: input_data.InputData | None = None,
+  ) -> tuple[list[str], list[str]]:
+    """Builds a model and returns the messages it logs and warns about.
 
-    with warnings.catch_warnings(record=True) as caught:
-      warnings.simplefilter("always")
-      self._context(
-          _ModelSpecWithChangepoints(
-              prior=prior_distribution.PriorDistribution(
-                  roi_m=custom_prior(),
-                  beta_m=custom_prior(),
-                  mroi_m=custom_prior(),
-              ),
-              changepoints={self.media[1]: [self.dates[10]]},
-              media_prior_type="coefficient",
-              changepoint_media_prior_type="roi",
-          )
-      )
+    Args:
+      model_spec: The model spec.
+      data: The input data. Default: a geo model with media and RF channels.
+
+    Returns:
+      The info messages, and the messages of the warnings about ignored priors.
+    """
+    with self.assertLogs(level="INFO") as logs:
+      with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        self._context(model_spec, data=data)
+      # `assertLogs` fails if nothing is logged.
+      logging.info("Built the model.")
+    infos = [
+        record.getMessage()
+        for record in logs.records
+        if record.levelno == logging.INFO
+        and record.getMessage().startswith("Custom prior")
+    ]
+    ignored_warnings = [
+        str(w.message) for w in caught if "are ignored" in str(w.message)
+    ]
+    return infos, ignored_warnings
+
+  def test_priors_used_by_channels_with_changepoints_are_not_ignored(self):
+    infos, ignored_warnings = self._build_logs(
+        _ModelSpecWithChangepoints(
+            prior=prior_distribution.PriorDistribution(
+                roi_m=_log_normal_prior(),
+                beta_m=_log_normal_prior(),
+                mroi_m=_log_normal_prior(),
+            ),
+            changepoints={self.media[1]: [self.dates[10]]},
+            media_prior_type="coefficient",
+            changepoint_media_prior_type="roi",
+        )
+    )
+    # No media channel uses `mroi_m`, so it gets today's warning.
     self.assertEqual(
-        [str(w.message) for w in caught if "are ignored" in str(w.message)],
+        ignored_warnings,
         [
             "Custom prior(s) `mroi_m` are ignored when `media_prior_type` is"
             ' set to "coefficient" and `changepoint_media_prior_type` is set'
             ' to "roi".'
         ],
     )
-
-  def _non_revenue_context(self, **spec_kwargs) -> context.ModelContext:
-    """Builds a non-revenue model without revenue per KPI."""
-    data = self.input_data_non_revenue_no_revenue_per_kpi
-    assert data.media_channel is not None
-    return self._context(
-        _ModelSpecWithChangepoints(
-            changepoints={
-                str(data.media_channel.values[0]): [
-                    data.time_coordinates.all_dates[10]
-                ]
-            },
-            **spec_kwargs,
-        ),
-        data=data,
+    # Some media channels use `roi_m` and `beta_m`, so they get info messages.
+    self.assertEqual(
+        infos,
+        [
+            (
+                "Custom prior `roi_m` is not used for the channels without"
+                " `changepoints` (['ch_0', 'ch_2']), because"
+                ' `media_prior_type` is "coefficient".'
+            ),
+            (
+                "Custom prior `beta_m` is not used for the channels with"
+                " `changepoints` (['ch_1']), because"
+                ' `changepoint_media_prior_type` is "roi".'
+            ),
+        ],
     )
 
+  def test_prior_ignored_by_rf_channels_with_changepoints_logs_info(self):
+    infos, ignored_warnings = self._build_logs(
+        _ModelSpecWithChangepoints(
+            prior=prior_distribution.PriorDistribution(
+                roi_rf=_log_normal_prior(),
+                contribution_rf=_log_normal_prior(),
+            ),
+            changepoints={self.rf[0]: [self.dates[10]]},
+            changepoint_rf_prior_type="contribution",
+        )
+    )
+    self.assertEmpty(ignored_warnings)
+    self.assertEqual(
+        infos,
+        [
+            (
+                "Custom prior `contribution_rf` is not used for the channels"
+                " without `changepoints` (['rf_ch_1']), because"
+                ' `rf_prior_type` is "roi".'
+            ),
+            (
+                "Custom prior `roi_rf` is not used for the channels with"
+                " `changepoints` (['rf_ch_0']), because"
+                ' `changepoint_rf_prior_type` is "contribution".'
+            ),
+        ],
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="without_changepoints",
+          n_changepoint_channels=0,
+          expected=(
+              "Custom prior(s) `roi_m` are ignored when `media_prior_type` is"
+              ' set to "coefficient".'
+          ),
+      ),
+      dict(
+          testcase_name="all_media_channels_with_changepoints",
+          n_changepoint_channels=3,
+          expected=(
+              "Custom prior(s) `roi_m` are ignored when"
+              ' `changepoint_media_prior_type` is set to "coefficient".'
+          ),
+      ),
+  )
+  def test_prior_ignored_by_all_channels_only_warns(
+      self, n_changepoint_channels: int, expected: str
+  ):
+    infos, ignored_warnings = self._build_logs(
+        _ModelSpecWithChangepoints(
+            prior=prior_distribution.PriorDistribution(
+                roi_m=_log_normal_prior()
+            ),
+            changepoints={
+                channel: [self.dates[10]]
+                for channel in self.media[:n_changepoint_channels]
+            },
+            media_prior_type="coefficient",
+            changepoint_media_prior_type="coefficient",
+        )
+    )
+    self.assertEqual(ignored_warnings, [expected])
+    self.assertEmpty(infos)
+
   def test_non_revenue_default_mroi_prior_of_channels_with_changepoints(self):
-    with self.assertRaisesRegex(
+    data = self.input_data_non_revenue_no_revenue_per_kpi
+    with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Custom priors should be set on `mroi_m` when"
-        ' `changepoint_media_prior_type` is "mroi"',
+        ' `changepoint_media_prior_type` is "mroi", KPI is non-revenue and'
+        " revenue per kpi data is missing.",
     ):
-      self._non_revenue_context(
-          media_prior_type="coefficient", changepoint_media_prior_type="mroi"
+      self._context(
+          _ModelSpecWithChangepoints(
+              changepoints={self.media[0]: [self.dates[10]]},
+              media_prior_type="coefficient",
+              changepoint_media_prior_type="mroi",
+          ),
+          data=data,
       )
 
   @parameterized.named_parameters(
-      (
-          "roi_without_changepoints",
-          "roi",
-          "coefficient",
-          "media_prior_type",
+      dict(
+          testcase_name="media",
+          channel_types="media",
+          n_media_changepoints=1,
+          spec_kwargs=dict(
+              media_prior_type="mroi", changepoint_media_prior_type="mroi"
+          ),
+          expected=(
+              "Custom priors should be set on `mroi_m` when `media_prior_type`"
+              ' or `changepoint_media_prior_type` is "mroi", KPI is'
+              " non-revenue and revenue per kpi data is missing."
+          ),
       ),
-      (
-          "roi_with_changepoints",
-          "coefficient",
-          "roi",
-          "changepoint_media_prior_type",
+      dict(
+          testcase_name="rf",
+          channel_types="rf",
+          n_rf_changepoints=1,
+          spec_kwargs=dict(
+              rf_prior_type="mroi", changepoint_rf_prior_type="mroi"
+          ),
+          expected=(
+              "Custom priors should be set on `mroi_rf` when `rf_prior_type`"
+              ' or `changepoint_rf_prior_type` is "mroi", KPI is non-revenue'
+              " and revenue per kpi data is missing."
+          ),
       ),
   )
-  def test_non_revenue_default_roi_prior_of_some_channels_raises(
+  def test_non_revenue_default_mroi_prior_names_every_mroi_setting(
       self,
-      media_prior_type: str,
-      changepoint_media_prior_type: str,
-      roi_setting: str,
+      channel_types: str,
+      spec_kwargs: Mapping[str, str],
+      expected: str,
+      n_media_changepoints: int = 0,
+      n_rf_changepoints: int = 0,
   ):
-    # The total media contribution prior needs every paid channel to use the
-    # default ROI prior.
-    with self.assertRaisesRegex(
-        ValueError,
-        f'Custom priors should be set on `roi_m` when `{roi_setting}` is "roi"',
-    ):
+    with self.assertRaisesWithLiteralMatch(ValueError, expected):
       self._non_revenue_context(
-          media_prior_type=media_prior_type,
-          changepoint_media_prior_type=changepoint_media_prior_type,
+          channel_types,
+          n_media_changepoints=n_media_changepoints,
+          n_rf_changepoints=n_rf_changepoints,
+          **spec_kwargs,
       )
 
-  def _non_revenue_rf_context(
-      self, n_changepoint_channels: int, **spec_kwargs
+  def _non_revenue_context(
+      self,
+      channel_types: str,
+      n_media_changepoints: int = 0,
+      n_rf_changepoints: int = 0,
+      custom_priors: Sequence[str] = (),
+      **spec_kwargs,
   ) -> context.ModelContext:
-    """Builds a non-revenue model with RF channels, without revenue per KPI.
+    """Builds a non-revenue model without revenue per KPI.
 
     Args:
-      n_changepoint_channels: The number of RF channels with changepoints.
-      **spec_kwargs: Other arguments of the model spec.
+      channel_types: "media", "rf", or "media_and_rf": the paid channels of the
+        model.
+      n_media_changepoints: The number of media channels with changepoints, from
+        the first.
+      n_rf_changepoints: The number of RF channels with changepoints, from the
+        first.
+      custom_priors: The priors, such as `roi_m`, to set to a custom
+        distribution.
+      **spec_kwargs: Other arguments of the model spec, such as
+        `media_prior_type`.
 
     Returns:
       The model context.
     """
-    data = self.input_data_media_and_rf_non_revenue_no_revenue_per_kpi
-    assert data.rf_channel is not None
+    if channel_types == "media":
+      data = self.input_data_non_revenue_no_revenue_per_kpi
+    elif channel_types == "rf":
+      data = data_test_utils.sample_input_data_non_revenue_no_revenue_per_kpi(
+          n_rf_channels=self._N_RF_CHANNELS
+      )
+    else:
+      data = self.input_data_media_and_rf_non_revenue_no_revenue_per_kpi
+    channels = []
+    if data.media_channel is not None:
+      channels += list(data.media_channel.values[:n_media_changepoints])
+    if data.rf_channel is not None:
+      channels += list(data.rf_channel.values[:n_rf_changepoints])
+    date = data.time_coordinates.all_dates[10]
     return self._context(
         _ModelSpecWithChangepoints(
-            changepoints={
-                str(channel): [data.time_coordinates.all_dates[10]]
-                for channel in data.rf_channel.values[:n_changepoint_channels]
-            },
+            prior=prior_distribution.PriorDistribution(
+                **{prior: _log_normal_prior() for prior in custom_priors}
+            ),
+            changepoints={str(channel): [date] for channel in channels},
             **spec_kwargs,
         ),
         data=data,
     )
 
   @parameterized.named_parameters(
-      ("roi_without_changepoints", "roi", "coefficient"),
-      ("roi_with_changepoints", "coefficient", "roi"),
+      dict(
+          testcase_name="media_channels_with_changepoints_use_other_type",
+          channel_types="media",
+          n_media_changepoints=1,
+          spec_kwargs=dict(changepoint_media_prior_type="contribution"),
+          expected=_NON_ROI_ERROR
+          + "on `roi_m` when `media_prior_type` or"
+          ' `changepoint_media_prior_type` is "roi".',
+      ),
+      dict(
+          testcase_name="media_channels_without_changepoints_use_other_type",
+          channel_types="media",
+          n_media_changepoints=1,
+          spec_kwargs=dict(media_prior_type="coefficient"),
+          expected=_NON_ROI_ERROR
+          + "on `roi_m` when `media_prior_type` or"
+          ' `changepoint_media_prior_type` is "roi".',
+      ),
+      dict(
+          testcase_name="rf_only",
+          channel_types="rf",
+          n_rf_changepoints=1,
+          spec_kwargs=dict(rf_prior_type="contribution"),
+          expected=_NON_ROI_ERROR
+          + "on `roi_rf` when `rf_prior_type` or `changepoint_rf_prior_type`"
+          ' is "roi".',
+      ),
+      dict(
+          testcase_name="media_and_rf_joined",
+          channel_types="media_and_rf",
+          n_media_changepoints=1,
+          n_rf_changepoints=1,
+          spec_kwargs=dict(
+              changepoint_media_prior_type="contribution",
+              rf_prior_type="coefficient",
+          ),
+          expected=_NON_ROI_ERROR
+          + "on `roi_m` when `media_prior_type` or"
+          ' `changepoint_media_prior_type` is "roi", and on `roi_rf` when'
+          ' `rf_prior_type` or `changepoint_rf_prior_type` is "roi".',
+      ),
+      dict(
+          testcase_name="joined_with_all_rf_channels_with_changepoints",
+          channel_types="media_and_rf",
+          n_media_changepoints=1,
+          n_rf_changepoints=2,
+          spec_kwargs=dict(changepoint_media_prior_type="contribution"),
+          expected=_NON_ROI_ERROR
+          + "on `roi_m` when `media_prior_type` or"
+          ' `changepoint_media_prior_type` is "roi", and on `roi_rf` when'
+          ' `changepoint_rf_prior_type` is "roi".',
+      ),
+      dict(
+          testcase_name="all_media_channels_with_changepoints",
+          channel_types="media_and_rf",
+          n_media_changepoints=3,
+          spec_kwargs=dict(rf_prior_type="coefficient"),
+          expected=_NON_ROI_ERROR
+          + 'on `roi_m` when `changepoint_media_prior_type` is "roi".',
+      ),
+      dict(
+          testcase_name="only_rf_channels_with_changepoints",
+          channel_types="media_and_rf",
+          n_rf_changepoints=2,
+          spec_kwargs=dict(changepoint_rf_prior_type="contribution"),
+          expected=_NON_ROI_ERROR
+          + 'on `roi_m` when `media_prior_type` is "roi".',
+      ),
+      dict(
+          testcase_name="custom_roi_m",
+          channel_types="media_and_rf",
+          n_media_changepoints=1,
+          custom_priors=("roi_m",),
+          spec_kwargs=dict(changepoint_media_prior_type="contribution"),
+          expected=_NON_ROI_ERROR
+          + 'on `roi_rf` when `rf_prior_type` is "roi".',
+      ),
+      dict(
+          testcase_name="all_roi_with_default_roi_m",
+          channel_types="media_and_rf",
+          n_media_changepoints=1,
+          custom_priors=("roi_rf",),
+          spec_kwargs={},
+          expected=_ROI_ERROR
+          + "on `roi_m` when `media_prior_type` or"
+          ' `changepoint_media_prior_type` is "roi".',
+      ),
+      dict(
+          testcase_name="all_roi_with_default_roi_rf",
+          channel_types="media_and_rf",
+          n_rf_changepoints=2,
+          custom_priors=("roi_m",),
+          spec_kwargs={},
+          expected=_ROI_ERROR
+          + 'on `roi_rf` when `changepoint_rf_prior_type` is "roi".',
+      ),
   )
-  def test_non_revenue_default_roi_prior_of_some_rf_channels_raises(
-      self, rf_prior_type: str, changepoint_rf_prior_type: str
+  def test_non_revenue_default_roi_prior_of_some_channels_raises(
+      self,
+      channel_types: str,
+      spec_kwargs: Mapping[str, str],
+      expected: str,
+      n_media_changepoints: int = 0,
+      n_rf_changepoints: int = 0,
+      custom_priors: Sequence[str] = (),
   ):
-    # Every media channel uses the default ROI prior, but only some RF channels
-    # do, so the total media contribution prior can't be used.
-    with self.assertRaisesRegex(
-        ValueError,
-        "Custom priors should be set on `roi_m` when `media_prior_type` is"
-        ' "roi"',
-    ):
-      self._non_revenue_rf_context(
-          n_changepoint_channels=1,
-          rf_prior_type=rf_prior_type,
-          changepoint_rf_prior_type=changepoint_rf_prior_type,
+    # The total media contribution prior needs every paid channel to use the
+    # default ROI prior.
+    with self.assertRaisesWithLiteralMatch(ValueError, expected):
+      self._non_revenue_context(
+          channel_types,
+          n_media_changepoints=n_media_changepoints,
+          n_rf_changepoints=n_rf_changepoints,
+          custom_priors=custom_priors,
+          **spec_kwargs,
       )
 
-  def test_non_revenue_default_roi_prior_of_rf_channels_with_changepoints(
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media_only",
+          channel_types="media",
+          n_media_changepoints=1,
+          spec_kwargs={},
+      ),
+      dict(
+          testcase_name="rf_only",
+          channel_types="rf",
+          n_rf_changepoints=1,
+          spec_kwargs={},
+      ),
+      dict(
+          testcase_name="media_and_rf",
+          channel_types="media_and_rf",
+          n_media_changepoints=1,
+          n_rf_changepoints=1,
+          spec_kwargs={},
+      ),
+      dict(
+          # `rf_prior_type` is ignored, because every RF channel has
+          # changepoints.
+          testcase_name="all_rf_channels_with_changepoints",
+          channel_types="media_and_rf",
+          n_media_changepoints=1,
+          n_rf_changepoints=2,
+          spec_kwargs=dict(rf_prior_type="coefficient"),
+      ),
+  )
+  def test_non_revenue_default_roi_prior_of_all_channels_uses_total_prior(
       self,
+      channel_types: str,
+      spec_kwargs: Mapping[str, str],
+      n_media_changepoints: int = 0,
+      n_rf_changepoints: int = 0,
   ):
-    data = self.input_data_media_and_rf_non_revenue_no_revenue_per_kpi
-    assert data.rf_channel is not None
-    # `rf_prior_type` is ignored, because every RF channel has changepoints.
-    with self.assertWarnsRegex(UserWarning, "total media contribution prior"):
-      model_context = self._non_revenue_rf_context(
-          n_changepoint_channels=len(data.rf_channel),
-          rf_prior_type="coefficient",
+    with self.assertWarnsRegex(
+        UserWarning,
+        re.escape(
+            "Consider setting custom ROI priors, as kpi_type was specified as"
+            " `non_revenue` with no `revenue_per_kpi` being set."
+        ),
+    ):
+      model_context = self._non_revenue_context(
+          channel_types,
+          n_media_changepoints=n_media_changepoints,
+          n_rf_changepoints=n_rf_changepoints,
+          **spec_kwargs,
       )
     self.assertTrue(model_context._set_total_media_contribution_prior)
 
-  def test_non_revenue_default_roi_prior_of_no_rf_channel_is_allowed(self):
-    model_context = self._non_revenue_rf_context(
-        n_changepoint_channels=1,
-        prior=prior_distribution.PriorDistribution(
-            roi_m=backend.tfd.LogNormal(
-                backend.np_float_dtype(0.5), backend.np_float_dtype(0.5)
-            )
-        ),
-        rf_prior_type="coefficient",
-        changepoint_rf_prior_type="contribution",
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="custom_roi_m_and_other_prior_type",
+          channel_types="media",
+          custom_priors=("roi_m",),
+          spec_kwargs=dict(changepoint_media_prior_type="contribution"),
+      ),
+      dict(
+          testcase_name="no_roi_prior_type",
+          channel_types="media_and_rf",
+          custom_priors=(),
+          spec_kwargs=dict(
+              media_prior_type="coefficient",
+              changepoint_media_prior_type="contribution",
+              rf_prior_type="contribution",
+              changepoint_rf_prior_type="coefficient",
+          ),
+      ),
+      dict(
+          testcase_name="custom_roi_priors",
+          channel_types="media_and_rf",
+          custom_priors=("roi_m", "roi_rf"),
+          spec_kwargs={},
+      ),
+      dict(
+          testcase_name="custom_roi_rf_and_other_media_prior_type",
+          channel_types="media_and_rf",
+          custom_priors=("roi_rf",),
+          spec_kwargs=dict(
+              media_prior_type="coefficient",
+              changepoint_media_prior_type="contribution",
+          ),
+      ),
+  )
+  def test_non_revenue_custom_or_no_roi_priors_are_allowed(
+      self,
+      channel_types: str,
+      custom_priors: Sequence[str],
+      spec_kwargs: Mapping[str, str],
+  ):
+    model_context = self._non_revenue_context(
+        channel_types,
+        n_media_changepoints=1,
+        n_rf_changepoints=1,
+        custom_priors=custom_priors,
+        **spec_kwargs,
     )
     self.assertFalse(model_context._set_total_media_contribution_prior)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="media",
+          spec_kwargs=dict(
+              media_prior_type="roi",
+              rf_prior_type="coefficient",
+              changepoint_media_prior_type="contribution",
+          ),
+          expected=(
+              "Custom priors should be set on `roi_m` when `media_prior_type`"
+              ' is "roi", custom priors are assigned on `roi_rf` or'
+              ' `rf_prior_type` is not "roi", KPI is non-revenue and revenue'
+              " per kpi data is missing."
+          ),
+      ),
+      dict(
+          testcase_name="rf",
+          spec_kwargs=dict(
+              media_prior_type="coefficient",
+              rf_prior_type="roi",
+              changepoint_rf_prior_type="contribution",
+          ),
+          expected=(
+              "Custom priors should be set on `roi_rf` when `rf_prior_type` is"
+              ' "roi", custom priors are assigned on `roi_m` or'
+              ' `media_prior_type` is not "roi", KPI is non-revenue and'
+              " revenue per kpi data is missing."
+          ),
+      ),
+  )
+  def test_non_revenue_default_roi_prior_without_changepoints_is_unchanged(
+      self, spec_kwargs: Mapping[str, Any], expected: str
+  ):
+    # Without changepoints, the changepoint prior type settings don't apply, and
+    # the error is the one of models without them.
+    with self.assertRaisesWithLiteralMatch(ValueError, expected):
+      self._non_revenue_context("media_and_rf", **spec_kwargs)
 
   def _changepoint_warnings(
       self,
