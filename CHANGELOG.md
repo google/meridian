@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `Analyzer.adstock_decay` to include the final lag of the Adstock
+    window. The decay curves and their integer time-unit points now span `0`
+    through `max_lag`; previously they stopped one time period early.
 *   Add a `balanced` option to `RandomHoldoutSpec` to balance held-out
     observations across time periods as well as geos.
 *   Add `ReviewSummary.plot_calibration_overview()` and

@@ -2519,6 +2519,34 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
           int(list(is_true_df[constants.TIME_UNITS])[i]),
       )
 
+  @parameterized.named_parameters(
+      dict(testcase_name="max_lag_0", max_lag=0, expected_max_time_unit=1),
+      dict(testcase_name="max_lag_1", max_lag=1, expected_max_time_unit=1),
+      dict(testcase_name="max_lag_15", max_lag=15, expected_max_time_unit=15),
+  )
+  def test_adstock_decay_time_units_span_adstock_window(
+      self, max_lag, expected_max_time_unit
+  ):
+    model_spec = spec.ModelSpec(max_lag=max_lag)
+    m = model.Meridian(input_data=self.input_data, model_spec=model_spec)
+    a = analyzer.Analyzer(
+        model_context=m.model_context, inference_data=self.inference_data
+    )
+
+    adstock_decay_dataframe = a.adstock_decay(
+        confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL
+    )
+
+    time_units = adstock_decay_dataframe[constants.TIME_UNITS]
+    self.assertEqual(time_units.min(), 0)
+    self.assertEqual(time_units.max(), expected_max_time_unit)
+    integer_time_units = adstock_decay_dataframe[
+        adstock_decay_dataframe[constants.IS_INT_TIME_UNIT]
+    ][constants.TIME_UNITS].unique()
+    self.assertSequenceEqual(
+        list(integer_time_units), list(range(expected_max_time_unit + 1))
+    )
+
   def test_adstock_decay_index_is_standard_range_index(self):
     adstock_df = self.analyzer.adstock_decay()
 
