@@ -42,6 +42,7 @@ dependencies = [
   "tensorflow >= 2.21.0, < 2.22",
   "tfp-nightly[substrates-jax] == 0.26.0.dev20260130",
   "tf-keras >= 2.21.0, < 2.22",
+  "tqdm",
   "xarray",
 ]
 # `version` is automatically set by flit to use `meridian.__version__`

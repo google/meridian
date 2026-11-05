@@ -1059,7 +1059,8 @@ class Meridian:
       progress_callback: Optional callable that receives a
         `progress.PriorSamplingProgress` snapshot each time a sampling stage
         (base, media, RF, ...) completes. Exceptions it raises are reported as
-        warnings and don't interrupt sampling.
+        warnings and don't interrupt sampling. To display a progress bar, pass
+        `progress.TqdmProgressBar()`.
     """
     prior_draws = self.prior_sampler_callable(
         n_draws=n_draws,
@@ -1202,7 +1203,8 @@ class Meridian:
           warnings and don't interrupt sampling. On the JAX backend, reporting
           every draw holds the latent adaptation draws in device memory until
           the chain batch finishes, which raises the latent draw-buffer memory
-          of a chain batch by `n_adapt / (n_burnin + n_keep)`.
+          of a chain batch by `n_adapt / (n_burnin + n_keep)`. To display
+          progress bars, pass `progress.TqdmProgressBar()`.
       **pins: These are used to condition the provided joint distribution, and
         are passed directly to `joint_dist.experimental_pin(**pins)`.
 

@@ -52,6 +52,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     `PosteriorSamplingProgress` snapshots as sampling advances. On the JAX
     backend, posterior progress is reported after every MCMC draw, adaptation
     included; on the TensorFlow backend, once per chain batch.
+*   Add `meridian.model.progress.TqdmProgressBar`, a ready-made
+    `progress_callback` that displays prior sampling, posterior chain batch and
+    posterior reconstruction progress as `tqdm` progress bars, with the current
+    stage and the number of divergent transitions. Meridian now depends on
+    `tqdm`.
 *   Enable Jinja2 HTML autoescaping for `.html.jinja` report templates.
 *   Fix `NDArrayInputDataBuilder.with_organic_reach` setting the organic
     frequency `DataArray` name to `organic_reach` instead of

@@ -36,6 +36,20 @@ mmm.sample_posterior(
     progress_callback=print_progress,
 )
 ```
+
+To display progress bars without writing a callback, pass a `TqdmProgressBar`:
+
+```python
+progress_bar = TqdmProgressBar()
+mmm.sample_prior(500, progress_callback=progress_bar)
+mmm.sample_posterior(
+    n_chains=4,
+    n_adapt=500,
+    n_burnin=500,
+    n_keep=1000,
+    progress_callback=progress_bar,
+)
+```
 """
 
 from collections.abc import Callable
@@ -44,6 +58,8 @@ import enum
 from typing import Generic, TypeVar
 import warnings
 
+from tqdm import auto as tqdm_auto
+
 __all__ = [
     "PosteriorProgressCallback",
     "PosteriorSamplingProgress",
@@ -51,6 +67,7 @@ __all__ = [
     "PriorProgressCallback",
     "PriorSamplingProgress",
     "PriorSamplingStage",
+    "TqdmProgressBar",
 ]
 
 
@@ -153,6 +170,111 @@ class PriorSamplingProgress:
 
 PosteriorProgressCallback = Callable[[PosteriorSamplingProgress], None]
 PriorProgressCallback = Callable[[PriorSamplingProgress], None]
+
+
+class TqdmProgressBar:
+  """A progress callback that displays sampling progress as tqdm progress bars.
+
+  Pass an instance as the `progress_callback` of `Meridian.sample_prior`,
+  `Meridian.sample_posterior` or `Meridian.sample_posterior_and_review`. It
+  displays a progress bar for each of the following:
+
+  *   Prior sampling, which advances as each prior sampling stage completes.
+  *   Each posterior chain batch, which advances after every draw on the JAX
+      backend and once per chain batch on the TensorFlow backend. On the JAX
+      backend, the first chain batch stays at zero draws while the sampler
+      compiles.
+  *   The posterior reconstruction, which advances after each reconstruction
+      batch.
+
+  Each bar shows the current stage, and the posterior bars show the number of
+  divergent transitions among the kept draws so far. The bars are rendered with
+  `tqdm.auto`: as widgets in notebooks and as text in a terminal.
+
+  One instance can be passed to several sampling calls, one call at a time.
+  """
+
+  def __init__(self):
+    self._bar: tqdm_auto.tqdm | None = None
+    self._bar_key: tuple[str, int] | None = None
+
+  def __call__(
+      self, snapshot: PriorSamplingProgress | PosteriorSamplingProgress
+  ) -> None:
+    """Updates the progress bars with a progress snapshot."""
+    if isinstance(snapshot, PriorSamplingProgress):
+      self._update(
+          key=("prior", 0),
+          desc="Prior sampling",
+          unit="stage",
+          n=snapshot.stages_completed,
+          total=snapshot.n_stages,
+          postfix={"stage": snapshot.stage.value},
+      )
+    elif snapshot.stage is PosteriorSamplingStage.RECONSTRUCTION:
+      self._update(
+          key=("reconstruction", 0),
+          desc="Posterior reconstruction",
+          unit="batch",
+          n=snapshot.reconstruction_batch,
+          total=snapshot.n_reconstruction_batches,
+          postfix={"divergent": snapshot.n_divergent},
+      )
+    else:
+      self._update(
+          key=("chain_batch", snapshot.chain_batch),
+          desc=(
+              f"Posterior chain batch {snapshot.chain_batch + 1}/"
+              f"{snapshot.n_chain_batches}"
+          ),
+          unit="draw",
+          n=snapshot.draw,
+          total=snapshot.n_draws,
+          postfix={
+              "stage": snapshot.stage.value,
+              "divergent": snapshot.n_divergent,
+          },
+      )
+
+  def _update(
+      self,
+      *,
+      key: tuple[str, int],
+      desc: str,
+      unit: str,
+      n: int,
+      total: int,
+      postfix: dict[str, str | int],
+  ) -> None:
+    """Moves the bar identified by `key` to `n` of `total`.
+
+    Starts a new bar when `key` changes, or when progress goes backwards, which
+    means that a new sampling call has started after an interrupted one. Closes
+    the bar once it is complete.
+
+    Args:
+      key: Identifies the sampling phase the bar tracks.
+      desc: Description shown before the bar.
+      unit: Unit of the counted work.
+      n: Units of work completed so far.
+      total: Total units of work.
+      postfix: Details shown after the bar.
+    """
+    if self._bar is None or key != self._bar_key or n <= self._bar.n:
+      self._close()
+      self._bar = tqdm_auto.tqdm(desc=desc, unit=unit, total=total)
+      self._bar_key = key
+    self._bar.n = n
+    self._bar.set_postfix(postfix)  # Also refreshes the bar.
+    if n >= total:
+      self._close()
+
+  def _close(self) -> None:
+    if self._bar is not None:
+      self._bar.close()
+    self._bar = None
+    self._bar_key = None
+
 
 _ProgressT = TypeVar(
     "_ProgressT", PosteriorSamplingProgress, PriorSamplingProgress
