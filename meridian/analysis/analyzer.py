@@ -4283,8 +4283,9 @@ class Analyzer:
           " calling this method."
       )
 
-    # Choose a step_size such that time_unit has consecutive integers defined
-    # throughout.
+    # Choose the number of steps per time period such that time_unit has
+    # consecutive integers defined throughout. The Adstock window spans lags
+    # `0, 1, ..., max_lag`, so the range is inclusive of `max_lag`.
     max_lag = max(self.model_context.model_spec.max_lag, 1)
     steps_per_time_period_max_lag = (
         constants.ADSTOCK_DECAY_MAX_TOTAL_STEPS // max_lag
@@ -4293,8 +4294,7 @@ class Analyzer:
         constants.ADSTOCK_DECAY_DEFAULT_STEPS_PER_TIME_PERIOD,
         steps_per_time_period_max_lag,
     )
-    step_size = 1 / steps_per_time_period
-    l_range = np.arange(0, max_lag, step_size)
+    l_range = np.linspace(0, max_lag, max_lag * steps_per_time_period + 1)
 
     xr_dims = [
         constants.TIME_UNITS,
