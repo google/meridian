@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-05
+
 *   Add a `balanced` option to `RandomHoldoutSpec` to balance held-out
     observations across time periods as well as geos.
 *   Add `ReviewSummary.plot_calibration_overview()` and
@@ -763,4 +765,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.8.0]: https://github.com/google/meridian/releases/tag/v1.8.0
 [2.0.0]: https://github.com/google/meridian/releases/tag/v2.0.0
 [2.1.0]: https://github.com/google/meridian/releases/tag/v2.1.0
-[Unreleased]: https://github.com/google/meridian/compare/v2.1.0...HEAD
+[2.2.0]: https://github.com/google/meridian/releases/tag/v2.2.0
+[Unreleased]: https://github.com/google/meridian/compare/v2.2.0...HEAD
