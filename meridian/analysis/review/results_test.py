@@ -3050,6 +3050,10 @@ class CalibrationScoreTest(parameterized.TestCase):
               " accuracy for 'pmax' and 'search': 'pmax' shows issues with"
               " high ROI and 'search' shows issues with high variance. See"
               " Channel calibration recommendation below for more details."
+              " The overall calibration recommendation is based on the"
+              " composite calibration score. Any flagged criteria are labelled"
+              " as contributors to channel calibration recommendation in the"
+              " table."
           ),
       ),
       (
@@ -3066,6 +3070,10 @@ class CalibrationScoreTest(parameterized.TestCase):
               "We recommend incrementality experiments to improve prior"
               " accuracy for 'pmax'. See Channel calibration recommendation"
               " below for more details."
+              " The overall calibration recommendation is based on the"
+              " composite calibration score. Any flagged criteria are labelled"
+              " as contributors to channel calibration recommendation in the"
+              " table."
           ),
       ),
       (
@@ -3078,6 +3086,10 @@ class CalibrationScoreTest(parameterized.TestCase):
               " below to check if this channel may be a good candidate for"
               " calibration via an incrementality experiment such as those run"
               " with Meridian GeoX."
+              " The overall calibration recommendation is based on the"
+              " composite calibration score. Any flagged criteria are labelled"
+              " as contributors to channel calibration recommendation in the"
+              " table."
           ),
       ),
       (
@@ -3094,6 +3106,10 @@ class CalibrationScoreTest(parameterized.TestCase):
               " channels may be good candidates for calibration via an"
               " incrementality experiment such as those run with Meridian"
               " GeoX."
+              " The overall calibration recommendation is based on the"
+              " composite calibration score. Any flagged criteria are labelled"
+              " as contributors to channel calibration recommendation in the"
+              " table."
           ),
       ),
       (
@@ -3111,6 +3127,10 @@ class CalibrationScoreTest(parameterized.TestCase):
               " table and plots below to check if this channel may be a good"
               " candidate for calibration via an incrementality experiment"
               " such as those run with Meridian GeoX."
+              " The overall calibration recommendation is based on the"
+              " composite calibration score. Any flagged criteria are labelled"
+              " as contributors to channel calibration recommendation in the"
+              " table."
           ),
       ),
       (
@@ -3125,6 +3145,10 @@ class CalibrationScoreTest(parameterized.TestCase):
               " accuracy for 'search' and 'display': 'search' shows issues"
               " with high ROI and 'pmax' shows potential bias. See Channel"
               " calibration recommendation below for more details."
+              " The overall calibration recommendation is based on the"
+              " composite calibration score. Any flagged criteria are labelled"
+              " as contributors to channel calibration recommendation in the"
+              " table."
           ),
       ),
   )
@@ -3145,7 +3169,10 @@ class CalibrationScoreTest(parameterized.TestCase):
     )
     # Location (b): calibration summary
     expected_summary = (
-        expected_recommendation
+        expected_recommendation.removesuffix(
+            " "
+            + review_constants.CHANNEL_CALIBRATION_RECOMMENDATION_CLARIFICATION
+        )
         if recommended_channels
         else review_constants.NO_CHANNELS_REQUIRE_CALIBRATION
     )

@@ -234,8 +234,15 @@ REVIEW_BOUNDARIES_INFO_TEXT = (
     " calibration via an incrementality experiment such as those run with"
     " Meridian GeoX."
 )
+CHANNEL_CALIBRATION_RECOMMENDATION_CLARIFICATION = (
+    "The overall calibration recommendation is based on the composite"
+    " calibration score. Any flagged criteria are labelled as contributors to"
+    " channel calibration recommendation in the table."
+)
+
 NO_CHANNELS_REQUIRE_CALIBRATION_RECOMMENDATION = (
     f"{NO_CHANNELS_REQUIRE_CALIBRATION} {REVIEW_BOUNDARIES_INFO_TEXT}"
+    f" {CHANNEL_CALIBRATION_RECOMMENDATION_CLARIFICATION}"
 )
 CALIBRATION_TEXT_METRICS_CHECK = "metrics_check"
 CALIBRATION_TEXT_CALIBRATION_SUMMARY = "calibration_summary"

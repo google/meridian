@@ -25,7 +25,7 @@ limitations under the License.
   {% else %}
   <div class="status-banner-strip info">
      <span class="material-icons-outlined">info</span>
-     <span>{{ recommendation_info or "No channels require calibration. We recommend reviewing the table and plots below to check for channels near the boundaries that may be good candidates for calibration via an incrementality experiment such as those run with Meridian GeoX." }}</span>
+     <span>{{ recommendation_info or "No channels require calibration. We recommend reviewing the table and plots below to check for channels near the boundaries that may be good candidates for calibration via an incrementality experiment such as those run with Meridian GeoX. The overall calibration recommendation is based on the composite calibration score. Any flagged criteria are labelled as contributors to channel calibration recommendation in the table." }}</span>
   </div>
   {% endif %}
   <div class="metrics-section">
