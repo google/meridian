@@ -426,16 +426,18 @@ experiments usually span both sections.
         priors rather than allowing a negative baseline. Includes a mathematical
         appendix.)
     *   `https://developers.google.com/meridian/docs/advanced-modeling/full-funnel`
-        (Explains full-funnel MMM, a two-stage approach that resolves the
-        mediator-confounder dilemma for brand equity variables such as Branded
-        Google Query Volume (bGQV): Stage 1 models brand marketing (TV, video,
-        PR) driving brand equity; Stage 2 models brand equity plus all marketing
-        driving the KPI. Including bGQV as a control under-credits brand
-        channels, excluding it over-credits lower-funnel channels like paid
-        search. The indirect effect is propagated into ROI, mROI, response
-        curves and budget optimization using `AnalyzerFullFunnel`. Covers when
-        to prefer single-stage MMM, compounded adstock decay across `max_lag` of
-        both stages, and the generic framework for any brand health metric.)
+        (Explains full-funnel MMM, a two-stage approach resolving the
+        mediator-confounder dilemma for brand equity variables like Branded
+        Google Query Volume (bGQV)—controls under-credit brand channels while
+        exclusion over-credits lower-funnel paid search. Stage 1 models brand
+        marketing driving brand equity; Stage 2 models brand equity plus all
+        marketing driving the KPI. Shows configuring both `Meridian` stages with
+        `DataFrameInputDataBuilder` and `ModelSpec` (`with_organic_media` and
+        `saturation_spec` `'none'` for brand equity,
+        `population_scaled_controls` for controls), and propagating indirect
+        effects into ROI, mROI, response curves (`visualizer.MediaEffects`), and
+        optimization via `AnalyzerFullFunnel` (`mediator_models`), plus
+        compounded `max_lag` adstock decay.)
 
 *   **Model Fitting & Execution:**
 
