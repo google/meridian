@@ -1310,24 +1310,24 @@ class ReviewSummary:
           )
         else:
           high_roi_str = (
-              constants.DRIVER
+              constants.CONTRIBUTOR
               if rec[constants.HIGH_ROI_STATUS] == Status.REVIEW
-              else constants.NON_DRIVER
+              else constants.NON_CONTRIBUTOR
           )
           low_roi_str = (
-              constants.DRIVER
+              constants.CONTRIBUTOR
               if rec[constants.LOW_ROI_STATUS] == Status.REVIEW
-              else constants.NON_DRIVER
+              else constants.NON_CONTRIBUTOR
           )
           hv_str = (
-              constants.DRIVER
+              constants.CONTRIBUTOR
               if rec[constants.HIGH_VARIANCE_STATUS] == Status.REVIEW
-              else constants.NON_DRIVER
+              else constants.NON_CONTRIBUTOR
           )
           pb_str = (
-              constants.DRIVER
+              constants.CONTRIBUTOR
               if rec[constants.POTENTIAL_BIAS_STATUS] == Status.REVIEW
-              else constants.NON_DRIVER
+              else constants.NON_CONTRIBUTOR
           )
           report.append(
               f"{channel_name:<20} | {score_str:<18} | {high_roi_str:<15}"
@@ -1796,8 +1796,8 @@ class ReviewSummary:
         recommendation_info=recommendation_info,
         calibration_score_threshold=constants.CALIBRATION_SCORE_THRESHOLD,
         calibration_score_yellow_color=constants.CALIBRATION_SCORE_YELLOW_COLOR,
-        driver_text=constants.DRIVER,
-        non_driver_text=constants.NON_DRIVER,
+        driver_text=constants.CONTRIBUTOR,
+        non_driver_text=constants.NON_CONTRIBUTOR,
         implausible_roi_chart_json=self.implausible_roi_chart_json,
         high_variance_chart_json=self.high_variance_chart_json,
         potential_bias_chart_json=self.potential_bias_chart_json,

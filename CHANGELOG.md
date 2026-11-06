@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Rename channel calibration recommendation criterion labels from `Driver` /
+    `Non-Driver` to `Contributor` / `Non-Contributor` in the Model Health
+    report. `meridian.analysis.review.constants.DRIVER` and `NON_DRIVER` are
+    renamed to `CONTRIBUTOR` and `NON_CONTRIBUTOR`.
+
 ## [2.2.0] - 2026-11-05
 
 *   Add a `balanced` option to `RandomHoldoutSpec` to balance held-out
