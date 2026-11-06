@@ -4355,18 +4355,27 @@ class Analyzer:
           " calling this method."
       )
 
-    # Choose a step_size such that time_unit has consecutive integers defined
-    # throughout.
-    max_lag = max(self.model_context.model_spec.max_lag, 1)
-    steps_per_time_period_max_lag = (
-        constants.ADSTOCK_DECAY_MAX_TOTAL_STEPS // max_lag
+    # Choose a grid over the effective Adstock window [0, effective_max_lag]
+    # such that every integer lag in the window is included exactly.
+    effective_max_lag = min(
+        self.model_context.model_spec.max_lag,
+        self.model_context.n_media_times - 1,
     )
-    steps_per_time_period = min(
-        constants.ADSTOCK_DECAY_DEFAULT_STEPS_PER_TIME_PERIOD,
-        steps_per_time_period_max_lag,
-    )
-    step_size = 1 / steps_per_time_period
-    l_range = np.arange(0, max_lag, step_size)
+    if effective_max_lag == 0:
+      l_range = np.array([0.0])
+    else:
+      steps_per_time_period = max(
+          1,
+          min(
+              constants.ADSTOCK_DECAY_DEFAULT_STEPS_PER_TIME_PERIOD,
+              constants.ADSTOCK_DECAY_MAX_TOTAL_STEPS // effective_max_lag,
+          ),
+      )
+      l_range = np.linspace(
+          0,
+          effective_max_lag,
+          effective_max_lag * steps_per_time_period + 1,
+      )
 
     xr_dims = [
         constants.TIME_UNITS,

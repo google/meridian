@@ -32,6 +32,7 @@ from meridian.analysis import test_utils as analysis_test_utils
 from meridian.backend import test_utils as backend_test_utils
 from meridian.common import errors
 from meridian.data import test_utils as data_test_utils
+from meridian.model import adstock_hill
 from meridian.model import context
 from meridian.model import model
 from meridian.model import spec
@@ -2526,6 +2527,306 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertEqual(adstock_df.index.start, 0)
     self.assertEqual(adstock_df.index.step, 1)
     self.assertLen(adstock_df, adstock_df.index.stop)
+
+  def _assert_media_final_lag_matches_compute_decay_weights(
+      self,
+      adstock_df: Any,
+      model_context: context.ModelContext,
+      inference_data: az.InferenceData,
+      effective_max_lag: int,
+  ) -> None:
+    assert model_context.input_data.media_channel is not None
+    media_channels = [
+        str(ch) for ch in model_context.input_data.media_channel.values
+    ]
+    final_lag = float(effective_max_lag)
+    final_lag_tensor = backend.to_tensor([final_lag], dtype=backend.float_dtype)
+    prior_alpha = inference_data[constants.PRIOR][constants.ALPHA_M].values[0]
+    posterior_alpha = np.reshape(
+        inference_data[constants.POSTERIOR][constants.ALPHA_M].values,
+        (-1, model_context.n_media_channels),
+    )
+    for dist_name, alpha_draws in (
+        (constants.PRIOR, prior_alpha),
+        (constants.POSTERIOR, posterior_alpha),
+    ):
+      weights = adstock_hill.compute_decay_weights(
+          alpha=backend.to_tensor(
+              alpha_draws[backend.newaxis, ...], dtype=backend.float_dtype
+          ),
+          l_range=final_lag_tensor,
+          window_size=effective_max_lag + 1,
+          decay_functions=model_context.adstock_decay_spec.media,
+          normalize=False,
+      )
+      expected_metrics = analyzer.get_central_tendency_and_ci(
+          weights[..., 0],
+          confidence_level=constants.DEFAULT_CONFIDENCE_LEVEL,
+      )
+      final_lag_df = (
+          adstock_df[
+              (adstock_df[constants.CHANNEL].isin(media_channels))
+              & (adstock_df[constants.TIME_UNITS] == final_lag)
+              & (adstock_df[constants.DISTRIBUTION] == dist_name)
+          ]
+          .set_index(constants.CHANNEL)
+          .loc[media_channels]
+      )
+      backend_test_utils.assert_allclose(
+          final_lag_df[constants.MEAN].to_numpy(),
+          expected_metrics[:, 0],
+          rtol=1e-5,
+          atol=1e-5,
+      )
+      backend_test_utils.assert_allclose(
+          final_lag_df[constants.CI_LO].to_numpy(),
+          expected_metrics[:, 1],
+          rtol=1e-5,
+          atol=1e-5,
+      )
+      backend_test_utils.assert_allclose(
+          final_lag_df[constants.CI_HI].to_numpy(),
+          expected_metrics[:, 2],
+          rtol=1e-5,
+          atol=1e-5,
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="max_lag_0_geometric",
+          max_lag=0,
+          decay_spec=constants.GEOMETRIC_DECAY,
+          expected_num_time_units=1,
+      ),
+      dict(
+          testcase_name="max_lag_0_binomial",
+          max_lag=0,
+          decay_spec=constants.BINOMIAL_DECAY,
+          expected_num_time_units=1,
+      ),
+      dict(
+          testcase_name="max_lag_1_geometric",
+          max_lag=1,
+          decay_spec=constants.GEOMETRIC_DECAY,
+          expected_num_time_units=6,
+      ),
+      dict(
+          testcase_name="max_lag_1_binomial",
+          max_lag=1,
+          decay_spec=constants.BINOMIAL_DECAY,
+          expected_num_time_units=6,
+      ),
+      dict(
+          testcase_name="max_lag_8_geometric",
+          max_lag=8,
+          decay_spec=constants.GEOMETRIC_DECAY,
+          expected_num_time_units=41,
+      ),
+      dict(
+          testcase_name="max_lag_8_binomial",
+          max_lag=8,
+          decay_spec=constants.BINOMIAL_DECAY,
+          expected_num_time_units=41,
+      ),
+      dict(
+          testcase_name="max_lag_15_geometric",
+          max_lag=15,
+          decay_spec=constants.GEOMETRIC_DECAY,
+          expected_num_time_units=76,
+      ),
+      dict(
+          testcase_name="max_lag_15_binomial",
+          max_lag=15,
+          decay_spec=constants.BINOMIAL_DECAY,
+          expected_num_time_units=76,
+      ),
+  )
+  def test_adstock_decay_includes_final_lag(
+      self, max_lag: int, decay_spec: str, expected_num_time_units: int
+  ):
+    model_context = context.ModelContext(
+        input_data=self.input_data,
+        model_spec=spec.ModelSpec(
+            max_lag=max_lag, adstock_decay_spec=decay_spec
+        ),
+    )
+    mmm_analyzer = analyzer.Analyzer(
+        model_context=model_context, inference_data=self.inference_data
+    )
+
+    adstock_df = mmm_analyzer.adstock_decay()
+
+    self.assertFalse(
+        adstock_df[[constants.MEAN, constants.CI_LO, constants.CI_HI]]
+        .isna()
+        .any()
+        .any()
+    )
+    ch_df = adstock_df[
+        (adstock_df[constants.CHANNEL] == "ch_0")
+        & (adstock_df[constants.DISTRIBUTION] == constants.POSTERIOR)
+    ]
+    self.assertLen(ch_df, expected_num_time_units)
+    self.assertEqual(ch_df[constants.TIME_UNITS].min(), 0.0)
+    self.assertEqual(ch_df[constants.TIME_UNITS].max(), float(max_lag))
+    self.assertSequenceEqual(
+        ch_df[ch_df[constants.IS_INT_TIME_UNIT]][
+            constants.TIME_UNITS
+        ].tolist(),
+        [float(lag) for lag in range(max_lag + 1)],
+    )
+    self.assertTrue(
+        all(
+            not float(t).is_integer()
+            for t in ch_df[~ch_df[constants.IS_INT_TIME_UNIT]][
+                constants.TIME_UNITS
+            ]
+        )
+    )
+    self._assert_media_final_lag_matches_compute_decay_weights(
+        adstock_df=adstock_df,
+        model_context=model_context,
+        inference_data=self.inference_data,
+        effective_max_lag=max_lag,
+    )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="geo_equal_to_n_media_times_geometric",
+          n_geos=2,
+          n_media_times=5,
+          max_lag=5,
+          decay_spec=constants.GEOMETRIC_DECAY,
+      ),
+      dict(
+          testcase_name="geo_equal_to_n_media_times_binomial",
+          n_geos=2,
+          n_media_times=5,
+          max_lag=5,
+          decay_spec=constants.BINOMIAL_DECAY,
+      ),
+      dict(
+          testcase_name="national_exceeds_n_media_times_geometric",
+          n_geos=1,
+          n_media_times=5,
+          max_lag=8,
+          decay_spec=constants.GEOMETRIC_DECAY,
+      ),
+      dict(
+          testcase_name="national_exceeds_n_media_times_binomial",
+          n_geos=1,
+          n_media_times=5,
+          max_lag=8,
+          decay_spec=constants.BINOMIAL_DECAY,
+      ),
+  )
+  def test_adstock_decay_caps_lag_at_n_media_times_minus_one(
+      self, n_geos: int, n_media_times: int, max_lag: int, decay_spec: str
+  ):
+    short_input_data = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=n_geos,
+            n_times=n_media_times,
+            n_media_times=n_media_times,
+            n_controls=1,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            seed=0,
+            nonzero_shift=1.0,
+        )
+    )
+    model_context = context.ModelContext(
+        input_data=short_input_data,
+        model_spec=spec.ModelSpec(
+            max_lag=max_lag, adstock_decay_spec=decay_spec
+        ),
+    )
+    mmm_analyzer = analyzer.Analyzer(
+        model_context=model_context, inference_data=self.inference_data
+    )
+
+    adstock_df = mmm_analyzer.adstock_decay()
+
+    effective_max_lag = n_media_times - 1
+    self.assertFalse(
+        adstock_df[[constants.MEAN, constants.CI_LO, constants.CI_HI]]
+        .isna()
+        .any()
+        .any()
+    )
+    ch_df = adstock_df[
+        (adstock_df[constants.CHANNEL] == "ch_0")
+        & (adstock_df[constants.DISTRIBUTION] == constants.POSTERIOR)
+    ]
+    expected_len = (
+        effective_max_lag
+        * constants.ADSTOCK_DECAY_DEFAULT_STEPS_PER_TIME_PERIOD
+        + 1
+    )
+    self.assertLen(ch_df, expected_len)
+    self.assertEqual(ch_df[constants.TIME_UNITS].min(), 0.0)
+    self.assertEqual(
+        ch_df[constants.TIME_UNITS].max(), float(effective_max_lag)
+    )
+    self.assertSequenceEqual(
+        ch_df[ch_df[constants.IS_INT_TIME_UNIT]][
+            constants.TIME_UNITS
+        ].tolist(),
+        [float(lag) for lag in range(effective_max_lag + 1)],
+    )
+    self._assert_media_final_lag_matches_compute_decay_weights(
+        adstock_df=adstock_df,
+        model_context=model_context,
+        inference_data=self.inference_data,
+        effective_max_lag=effective_max_lag,
+    )
+
+  def test_adstock_decay_max_lag_exceeds_max_total_steps(self):
+    large_max_lag = constants.ADSTOCK_DECAY_MAX_TOTAL_STEPS + 500
+    long_input_data = (
+        data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+            n_geos=2,
+            n_times=5,
+            n_media_times=large_max_lag + 5,
+            n_controls=1,
+            n_media_channels=_N_MEDIA_CHANNELS,
+            seed=0,
+            nonzero_shift=1.0,
+        )
+    )
+    model_context = context.ModelContext(
+        input_data=long_input_data,
+        model_spec=spec.ModelSpec(
+            max_lag=large_max_lag, adstock_decay_spec=constants.BINOMIAL_DECAY
+        ),
+    )
+    mmm_analyzer = analyzer.Analyzer(
+        model_context=model_context, inference_data=self.inference_data
+    )
+
+    adstock_df = mmm_analyzer.adstock_decay()
+
+    self.assertFalse(
+        adstock_df[[constants.MEAN, constants.CI_LO, constants.CI_HI]]
+        .isna()
+        .any()
+        .any()
+    )
+    ch_df = adstock_df[
+        (adstock_df[constants.CHANNEL] == "ch_0")
+        & (adstock_df[constants.DISTRIBUTION] == constants.POSTERIOR)
+    ]
+    self.assertLen(ch_df, large_max_lag + 1)
+    self.assertSequenceEqual(
+        ch_df[constants.TIME_UNITS].tolist(),
+        [float(lag) for lag in range(large_max_lag + 1)],
+    )
+    self.assertTrue(ch_df[constants.IS_INT_TIME_UNIT].all())
+    self._assert_media_final_lag_matches_compute_decay_weights(
+        adstock_df=adstock_df,
+        model_context=model_context,
+        inference_data=self.inference_data,
+        effective_max_lag=large_max_lag,
+    )
 
   def test_hill_histogram_column_names(self):
     hill_histogram_table = self.analyzer._get_hill_histogram_dataframe(
