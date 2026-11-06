@@ -939,9 +939,8 @@ class WeeklyOptimizationGrid:
     """
     errors = []
     rf_channels = set(self.rf_channels)
-    rounded_hist_spend = np.round(hist_spend, round_factor).astype(int)
     for i, (channel, channel_spend) in enumerate(
-        zip(self.channels, rounded_hist_spend)
+        zip(self.channels, hist_spend)
     ):
       # RF outcomes are linear in spend, so any bounds are covered.
       if channel_spend == 0 or channel in rf_channels:
@@ -952,10 +951,10 @@ class WeeklyOptimizationGrid:
       )
       channel_mults = channel_grid[c.SPEND_MULTIPLIER].values
       channel_min_spend = float(
-          np.round(channel_mults[0] * channel_spend, round_factor).astype(int)
+          np.round(channel_mults[0] * channel_spend, round_factor)
       )
       channel_max_spend = float(
-          np.round(channel_mults[-1] * channel_spend, round_factor).astype(int)
+          np.round(channel_mults[-1] * channel_spend, round_factor)
       )
 
       if lower_bound[i] < channel_min_spend:
