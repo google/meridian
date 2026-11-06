@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `Analyzer.adstock_decay()` and `MediaEffects.plot_adstock_decay()`
+    omitting the final lag of the Adstock window. `time_units` now spans `0`
+    through `min(max_lag, n_media_times - 1)` inclusive, with a discrete integer
+    point at every lag in the window.
+
 ## [2.2.0] - 2026-11-05
 
 *   Add a `balanced` option to `RandomHoldoutSpec` to balance held-out
