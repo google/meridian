@@ -122,6 +122,25 @@ CPIK_CHANNEL_CHART_DESCRIPTION = """Note: CPIK (cost per incremental KPI) point
 estimate is determined by the posterior median, whereas ROI point estimate is
 determined by the posterior mean."""
 
+ROI_OVER_TIME_CHART_ID = 'roi-over-time-chart'
+ROI_OVER_TIME_CHART_TITLE_FORMAT = (
+    'ROI by changepoint-defined time interval {ci}'
+)
+# The note of the ROI over time chart. `selected_times_note` is
+# `ROI_OVER_TIME_SELECTED_TIMES_NOTE` when the 2-pager covers only some time
+# periods, and empty otherwise.
+ROI_OVER_TIME_CHART_DESCRIPTION_FORMAT = """Note: {selected_times_note}Only
+channels with changepoints are shown. A channel's changepoints partition the
+training period into time intervals; each flat step shows the time interval's
+ROI and shaded credible interval, with vertical lines connecting consecutive
+steps at changepoints. The ROI of an interval is the incremental outcome over
+all geos in the interval's time periods, divided by the spend over the same
+geos and time periods. Intervals without spend have no ROI and are left
+blank."""
+ROI_OVER_TIME_SELECTED_TIMES_NOTE = """This chart covers all time periods of the
+training data, even when the rest of this card covers only the selected time
+periods. """
+
 RESPONSE_CURVES_CARD_ID = 'response-curves'
 RESPONSE_CURVES_CARD_TITLE = 'Response curves'
 RESPONSE_CURVES_INSIGHTS_FORMAT = """Your response curves depict the
@@ -228,6 +247,8 @@ HILL_SATURATION_CHART_TITLE = 'Hill Saturation Curves'
 
 # Plot labels.
 CHANNEL_LABEL = 'Channel'
+CI_LOW_LABEL = 'CI Low'
+CI_HIGH_LABEL = 'CI High'
 SPEND_LABEL = 'Spend'
 ROI_LABEL = 'ROI'
 CPIK_LABEL = 'CPIK'

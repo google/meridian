@@ -4085,3 +4085,43 @@ def generate_selected_times(start: str, periods: int) -> Sequence[str]:
       .strftime("%Y-%m-%d")
       .tolist()
   )
+
+
+def generate_metric_by_changepoint_interval(
+    intervals_by_channel: Mapping[str, Sequence[tuple[str, str, float | None]]],
+    metric: str = c.ROI,
+) -> xr.Dataset:
+  """Builds a dataset like `Analyzer._roi_by_changepoint_interval` returns.
+
+  Args:
+    intervals_by_channel: For each channel, the `(start_date, end_date, mean)`
+      of each interval, where `end_date` is the interval's last time period and
+      `mean` is `None` for an interval without spend. The credible interval is
+      the mean -1 and +1.
+    metric: The name of the metric in the dataset.
+
+  Returns:
+    A dataset with the metric of each interval.
+  """
+  channels = list(intervals_by_channel)
+  n_intervals = max(map(len, intervals_by_channel.values()))
+  values = np.full((len(channels), n_intervals, 3), np.nan)
+  start_date = np.full((len(channels), n_intervals), "", dtype=object)
+  end_date = np.full((len(channels), n_intervals), "", dtype=object)
+  for i, intervals in enumerate(intervals_by_channel.values()):
+    for k, (start, end, mean) in enumerate(intervals):
+      start_date[i, k] = start
+      end_date[i, k] = end
+      if mean is not None:
+        values[i, k] = [mean, mean - 1, mean + 1]
+  dims = [c.CHANNEL, c.CHANGEPOINT_INTERVAL]
+  return xr.Dataset(
+      data_vars={metric: ([*dims, c.METRIC], values)},
+      coords={
+          c.CHANNEL: channels,
+          c.CHANGEPOINT_INTERVAL: np.arange(n_intervals),
+          c.METRIC: [c.MEAN, c.CI_LO, c.CI_HI],
+          c.START_DATE: (dims, start_date.astype(str)),
+          c.END_DATE: (dims, end_date.astype(str)),
+      },
+  )

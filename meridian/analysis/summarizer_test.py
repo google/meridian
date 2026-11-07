@@ -1375,6 +1375,162 @@ class SummarizerTest(parameterized.TestCase):
     self.assertEqual(result.coords[c.RF_CHANNEL].item(), 'rf_ch_1')
     self.assertEqual(result.values.item(), 2.0)
 
+  def _card_ids(self, summary_html_dom: ET.Element) -> list[str]:
+    return [
+        card.attrib['id']
+        for card in summary_html_dom.findall('body/cards/card')
+    ]
+
+  def _performance_breakdown_card(
+      self, summary_html_dom: ET.Element
+  ) -> ET.Element:
+    return test_utils.get_child_element(
+        summary_html_dom,
+        'body/cards/card',
+        attribs={'id': summary_text.PERFORMANCE_BREAKDOWN_CARD_ID},
+    )
+
+  def _performance_breakdown_charts(
+      self, summary_html_dom: ET.Element
+  ) -> list[ET.Element]:
+    return self._performance_breakdown_card(summary_html_dom).findall(
+        'charts/chart'
+    )
+
+  def _chart_id(self, chart: ET.Element) -> str:
+    return test_utils.get_child_element(chart, 'chart-embed').attrib['id']
+
+  def test_roi_over_time_chart_for_a_model_with_changepoints(self):
+    self.analyzer._has_changepoints = True  # pylint: disable=protected-access
+    self.media_summary._plot_roi_over_time().to_json.return_value = (  # pylint: disable=protected-access
+        '["roi_over_time"]'
+    )
+
+    summary_html_dom = self._get_output_model_results_summary_html_dom(
+        summarizer.Summarizer(self.mock_meridian_revenue)
+    )
+
+    # The same cards as for a model without changepoints.
+    self.assertEqual(
+        self._card_ids(summary_html_dom),
+        [
+            summary_text.MODEL_FIT_CARD_ID,
+            summary_text.CHANNEL_CONTRIB_CARD_ID,
+            summary_text.PERFORMANCE_BREAKDOWN_CARD_ID,
+            summary_text.RESPONSE_CURVES_CARD_ID,
+        ],
+    )
+    # The ROI over time chart is in the ROI card, after the ROI per channel.
+    charts = self._performance_breakdown_charts(summary_html_dom)
+    self.assertEqual(
+        [self._chart_id(chart) for chart in charts],
+        [
+            summary_text.ROI_EFFECTIVENESS_CHART_ID,
+            summary_text.ROI_MARGINAL_CHART_ID,
+            summary_text.ROI_CHANNEL_CHART_ID,
+            summary_text.ROI_OVER_TIME_CHART_ID,
+            summary_text.CPIK_CHANNEL_CHART_ID,
+        ],
+    )
+    # The chart is drawn from `_plot_roi_over_time`.
+    script_texts = [
+        script.text or ''
+        for script in self._performance_breakdown_card(
+            summary_html_dom
+        ).findall('charts/script')
+    ]
+    (script,) = [
+        text
+        for text in script_texts
+        if f"vegaEmbed('#{summary_text.ROI_OVER_TIME_CHART_ID}'" in text
+    ]
+    self.assertIn('roi_over_time', script)
+
+  @parameterized.named_parameters(
+      # The 2-pager covers all time periods of the training data.
+      dict(
+          testcase_name='all_time_periods',
+          selected_times=None,
+          expected_start='Note: Only channels with changepoints are shown.',
+      ),
+      dict(
+          testcase_name='selected_times',
+          selected_times=_TIME_COORDS_STRINGS[1:],
+          expected_start=(
+              'Note: This chart covers all time periods of the training data,'
+              ' even when the rest of this card covers only the selected time'
+              ' periods. Only channels with changepoints are shown.'
+          ),
+      ),
+  )
+  def test_roi_over_time_chart_note(self, selected_times, expected_start):
+    self.analyzer._has_changepoints = True  # pylint: disable=protected-access
+    self.media_summary._plot_roi_over_time().to_json.return_value = '[]'  # pylint: disable=protected-access
+    self.mock_meridian_revenue.expand_selected_time_dims.return_value = (
+        selected_times
+    )
+    # The outcome contribution card reads `n_times` when the 2-pager covers all
+    # time periods.
+    self.mock_meridian_revenue.n_times = len(_TIME_COORDS_STRINGS)
+
+    summary_html_dom = self._get_output_model_results_summary_html_dom(
+        summarizer.Summarizer(self.mock_meridian_revenue)
+    )
+
+    (chart,) = [
+        chart
+        for chart in self._performance_breakdown_charts(summary_html_dom)
+        if self._chart_id(chart) == summary_text.ROI_OVER_TIME_CHART_ID
+    ]
+    description = test_utils.get_child_element(chart, 'chart-description').text
+    assert description is not None
+    self.assertEqual(
+        ' '.join(description.split()),
+        expected_start
+        + " A channel's changepoints partition the training period into time"
+        " intervals; each flat step shows the time interval's ROI and shaded"
+        ' credible interval, with vertical lines connecting consecutive steps'
+        ' at changepoints. The ROI of an interval is the incremental outcome'
+        " over all geos in the interval's time periods, divided by the spend"
+        ' over the same geos and time periods. Intervals without spend have no'
+        ' ROI and are left blank.',
+    )
+
+  @parameterized.named_parameters(
+      # Mock analyzers in tests have a truthy mock attribute.
+      ('mock_attribute', mock.MagicMock()),
+      ('no_changepoints', False),
+  )
+  def test_no_roi_over_time_chart_without_changepoints(self, has_changepoints):
+    self.analyzer._has_changepoints = has_changepoints  # pylint: disable=protected-access
+
+    summary_html_dom = self._get_output_model_results_summary_html_dom(
+        summarizer.Summarizer(self.mock_meridian_revenue)
+    )
+
+    self.assertEqual(
+        self._card_ids(summary_html_dom),
+        [
+            summary_text.MODEL_FIT_CARD_ID,
+            summary_text.CHANNEL_CONTRIB_CARD_ID,
+            summary_text.PERFORMANCE_BREAKDOWN_CARD_ID,
+            summary_text.RESPONSE_CURVES_CARD_ID,
+        ],
+    )
+    self.assertEqual(
+        [
+            self._chart_id(chart)
+            for chart in self._performance_breakdown_charts(summary_html_dom)
+        ],
+        [
+            summary_text.ROI_EFFECTIVENESS_CHART_ID,
+            summary_text.ROI_MARGINAL_CHART_ID,
+            summary_text.ROI_CHANNEL_CHART_ID,
+            summary_text.CPIK_CHANNEL_CHART_ID,
+        ],
+    )
+    self.media_summary._plot_roi_over_time.assert_not_called()  # pylint: disable=protected-access
+
 
 if __name__ == '__main__':
   absltest.main()

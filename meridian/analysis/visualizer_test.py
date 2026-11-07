@@ -21,6 +21,7 @@ import altair as alt
 import arviz as az
 from meridian import backend
 from meridian import constants as c
+from meridian.analysis import _changepoint_plots
 from meridian.analysis import analyzer
 from meridian.analysis import summary_text
 from meridian.analysis import test_utils
@@ -28,6 +29,7 @@ from meridian.analysis import visualizer
 from meridian.common import errors
 from meridian.data import input_data
 from meridian.data import test_utils as data_test_utils
+from meridian.data import time_coordinates as tc
 from meridian.model import context
 from meridian.model import knots
 from meridian.model import model
@@ -3181,6 +3183,104 @@ class MediaSummaryTest(parameterized.TestCase):
     max_value = max(plot.data.roi.max(), plot.data.mroi.max())
     self.assertEqual(plot.encoding.x["scale"], plot.encoding.y["scale"])
     self.assertEqual(plot.encoding.x["scale"]["domain"][1], max_value)
+
+
+class MediaSummaryRoiOverTimeTest(absltest.TestCase):
+  """Tests the ROI over time chart of a model with changepoints."""
+
+  # pylint: disable=protected-access
+
+  def setUp(self):
+    super().setUp()
+    model_context = mock.create_autospec(
+        context.ModelContext,
+        instance=True,
+        input_data=mock.create_autospec(input_data.InputData, instance=True),
+    )
+    model_context.input_data.kpi_type = c.REVENUE
+    model_context.input_data.revenue_per_kpi = (
+        data_test_utils.constant_revenue_per_kpi(n_geos=2, n_times=5, value=1.0)
+    )
+    model_context.input_data.time_coordinates = tc.TimeCoordinates.from_dates([
+        "2024-01-01",
+        "2024-01-08",
+        "2024-01-15",
+        "2024-01-22",
+        "2024-01-29",
+    ])
+    self.meridian = mock.create_autospec(
+        model.Meridian,
+        instance=True,
+        model_context=model_context,
+        input_data=model_context.input_data,
+    )
+    self.roi_by_interval = self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer, "_roi_by_changepoint_interval", autospec=True
+        )
+    )
+    # The channels aren't in alphabetical order.
+    self.roi_by_interval.return_value = (
+        test_utils.generate_metric_by_changepoint_interval({
+            "youtube": [
+                ("2024-01-01", "2024-01-15", 1.0),
+                ("2024-01-22", "2024-01-29", 4.0),
+            ],
+            "tv": [("2024-01-01", "2024-01-29", 2.0)],
+        })
+    )
+
+  def test_plot_roi_over_time(self):
+    # The chart covers all time periods, even when `selected_times` has fewer.
+    media_summary = visualizer.MediaSummary(
+        self.meridian, selected_times=["2024-01-08"]
+    )
+
+    chart = media_summary._plot_roi_over_time()
+
+    self.assertIsInstance(chart, alt.FacetChart)
+    data = chart.data
+    assert isinstance(data, pd.DataFrame)
+    pd.testing.assert_frame_equal(
+        data,
+        _changepoint_plots.interval_df(
+            self.roi_by_interval.return_value,
+            c.ROI,
+            self.meridian.input_data.time_coordinates,
+        ),
+    )
+    self.assertEqual(data[c.CHANNEL].unique().tolist(), ["youtube", "tv"])
+    spec = chart.to_dict()
+    self.assertEqual(
+        spec["title"]["text"],
+        "ROI by changepoint-defined time interval with 90% credible interval",
+    )
+    self.assertEqual(spec["facet"]["row"]["sort"], ["youtube", "tv"])
+    credible_intervals, steps = spec["spec"]["layer"]
+    self.assertEqual(steps["encoding"]["y"]["field"], c.MEAN)
+    for layer in (credible_intervals, steps):
+      self.assertEqual(layer["encoding"]["y"]["title"], "ROI")
+      self.assertEqual(
+          layer["encoding"]["x"]["scale"]["domain"],
+          ["2024-01-01T00:00:00", "2024-02-05T00:00:00"],
+      )
+
+  def test_plot_roi_over_time_uses_the_kpi_and_confidence_level(self):
+    # A model whose KPI isn't revenue and that has no revenue per KPI uses the
+    # KPI.
+    self.meridian.model_context.input_data.kpi_type = c.NON_REVENUE
+    self.meridian.model_context.input_data.revenue_per_kpi = None
+    media_summary = visualizer.MediaSummary(self.meridian, confidence_level=0.8)
+
+    chart = media_summary._plot_roi_over_time()
+
+    self.roi_by_interval.assert_called_once_with(
+        mock.ANY, use_kpi=True, confidence_level=0.8
+    )
+    self.assertEqual(
+        chart.to_dict()["title"]["text"],
+        "ROI by changepoint-defined time interval with 80% credible interval",
+    )
 
 
 class MediaEffectsInitTest(parameterized.TestCase):
