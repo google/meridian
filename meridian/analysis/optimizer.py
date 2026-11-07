@@ -37,6 +37,7 @@ from meridian.data import time_coordinates as tc
 from meridian.model import context
 from meridian.model import equations
 from meridian.model import model
+from meridian.model import spec
 from meridian.templates import formatter
 import numpy as np
 import pandas as pd
@@ -1462,6 +1463,37 @@ class OptimizationResults:
             outcome=self._kpi_or_revenue,
         ),
         [response_curves],
+    )
+
+
+def _raise_if_changepoints(model_spec: spec.ModelSpec, name: str) -> None:
+  """Raises an error if a model has changepoints, for surfaces without support.
+
+  Some surfaces, such as `WeeklyOptimizationGrid`, assume that each channel has
+  one effect, so their results would be wrong for a model with changepoints.
+  They call this function before doing any work.
+
+  Args:
+    model_spec: The model spec of the model.
+    name: The surface without support, as shown in the error message, for
+      example "`WeeklyOptimizationGrid`".
+
+  Raises:
+    NotImplementedError: If the model has changepoints.
+  """
+  # Only the private `spec._ModelSpecWithChangepoints` has `changepoints`, so it
+  # is read with `getattr`. The `Mapping` check is needed because tests often
+  # pass mock models, whose attributes are always truthy.
+  # TODO: Read `model_spec.changepoints` directly once
+  # `changepoints` moves to `ModelSpec`.
+  changepoints = getattr(model_spec, 'changepoints', None)
+  if isinstance(changepoints, Mapping) and changepoints:
+    # TODO: Say `BudgetOptimizer.optimize(changepoint_effect=...)`
+    # once `changepoint_effect` is public.
+    raise NotImplementedError(
+        f'{name} does not support models with `changepoints` yet: its results'
+        ' would not reflect the time-varying effects. Use'
+        ' `BudgetOptimizer.optimize` instead.'
     )
 
 
