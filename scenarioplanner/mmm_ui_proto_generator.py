@@ -158,6 +158,12 @@ class MmmUiProtoGenerator:
           )
 
       if isinstance(spec, bop.BudgetOptimizationSpec):
+        # Budget optimization assumes one effect per channel, unlike the other
+        # specs, which work for models with changepoints.
+        optimizer._raise_if_changepoints(  # pylint: disable=protected-access
+            self._mmm.model_spec,
+            "Budget optimization in `MmmUiProtoGenerator`",
+        )
         group_id = spec.group_id
         if not group_id:
           group_id = str(uuid.uuid4())

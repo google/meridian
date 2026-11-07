@@ -83,6 +83,7 @@ import dataclasses
 
 from meridian import backend
 from meridian import constants
+from meridian.analysis import optimizer
 from mmm.v1 import mmm_pb2 as pb
 from mmm.v1.common import kpi_type_pb2 as kpi_type_pb
 from mmm.v1.marketing.analysis import marketing_analysis_pb2 as analysis_pb
@@ -214,20 +215,11 @@ class ReachFrequencyOptimizationProcessor(
       trained_model: model_processor.ModelType,
   ):
     trained_model = model_processor.ensure_trained_model(trained_model)
+    optimizer._raise_if_changepoints(  # pylint: disable=protected-access
+        trained_model.mmm.model_spec, "`ReachFrequencyOptimizationProcessor`"
+    )
     self._internal_analyzer = trained_model.internal_analyzer
     self._meridian = trained_model.mmm
-    # TODO: Point users to `BudgetOptimizer.optimize`'s
-    # `changepoint_effect` argument once it exists.
-    # Mock analyzers in tests may lack the attribute or have a truthy one.
-    has_changepoints = getattr(
-        self._internal_analyzer, "_has_changepoints", False
-    )
-    if isinstance(has_changepoints, bool) and has_changepoints:
-      raise NotImplementedError(
-          "`ReachFrequencyOptimizationProcessor` does not support models with"
-          " `changepoints` yet: its results would not reflect the time-varying"
-          " effects."
-      )
 
     if trained_model.mmm.input_data.rf_channel is None:
       raise ValueError("RF channels must be set in the model.")

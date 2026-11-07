@@ -355,6 +355,9 @@ class BudgetOptimizationProcessor(
       trained_model: model_processor.ModelType,
   ):
     self._trained_model = model_processor.ensure_trained_model(trained_model)
+    optimizer._raise_if_changepoints(  # pylint: disable=protected-access
+        self._trained_model.mmm.model_spec, f'`{type(self).__name__}`'
+    )
     self._internal_analyzer = self._trained_model.internal_analyzer
     self._internal_optimizer = self._trained_model.internal_optimizer
 
