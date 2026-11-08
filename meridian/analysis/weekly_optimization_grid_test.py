@@ -24,6 +24,7 @@ from meridian import backend
 from meridian import constants as c
 from meridian.analysis import analyzer
 from meridian.analysis import optimizer
+from meridian.analysis import tensors
 from meridian.analysis import test_utils as analysis_test_utils
 from meridian.analysis import weekly_optimization_grid
 from meridian.common import errors as common_errors
@@ -161,6 +162,35 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
             autospec=True,
         )
     )
+
+  def test_scenario_changes_invalidate_converted_grid(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    weekly_grid = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        budget_optimizer._analyzer,
+        multiplier_step=0.1,
+        use_optimal_frequency=False,
+    )
+    grid = weekly_grid.to_optimization_grid()
+    original = budget_optimizer.optimize(
+        optimization_grid=grid, use_optimal_frequency=False
+    )
+    self.assertIs(original.optimization_grid, grid)
+
+    new_data = tensors.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media * 1.1
+    )
+    with self.assertWarnsRegex(UserWarning, 'different scenario data'):
+      result = budget_optimizer.optimize(
+          optimization_grid=grid,
+          new_data=new_data,
+          use_optimal_frequency=False,
+          gtol=0.01,
+      )
+    fresh = budget_optimizer.optimize(
+        new_data=new_data, use_optimal_frequency=False, gtol=0.01
+    )
+    self.assertIsNot(result.optimization_grid, grid)
+    xr.testing.assert_allclose(result.optimized_data, fresh.optimized_data)
 
   def test_create_with_changepoints_raises(self):
     data = self.input_data_media_only
@@ -914,26 +944,19 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     budget = hist_spend * budget_factor
 
-    results_weekly = None
-    with mock.patch.object(
-        weekly_optimization_grid.WeeklyOptimizationGrid,
-        '_create_grids',
-        wraps=weekly_optimization_grid.WeeklyOptimizationGrid._create_grids,
-        autospec=True,
-    ) as mock_create_grids:
-      grid = weekly_grid.to_optimization_grid(
-          start_date=start_date,
-          end_date=end_date,
-      )
-      results_weekly = self.budget_optimizer_media_only.optimize(
-          optimization_grid=grid,
-          spend_constraint_lower=0.1,
-          spend_constraint_upper=0.1,
-          start_date=start_date,
-          end_date=end_date,
-          budget=budget,
-      )
-      mock_create_grids.assert_called_once()
+    grid = weekly_grid.to_optimization_grid(
+        start_date=start_date,
+        end_date=end_date,
+    )
+    results_weekly = self.budget_optimizer_media_only.optimize(
+        optimization_grid=grid,
+        spend_constraint_lower=0.1,
+        spend_constraint_upper=0.1,
+        start_date=start_date,
+        end_date=end_date,
+        budget=budget,
+    )
+    self.assertIs(results_weekly.optimization_grid, grid)
     results_standard = self.budget_optimizer_media_only.optimize(
         spend_constraint_lower=0.1,
         spend_constraint_upper=0.1,
@@ -999,27 +1022,20 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     )
     budget = hist_spend * budget_factor
 
-    results_weekly = None
-    with mock.patch.object(
-        weekly_optimization_grid.WeeklyOptimizationGrid,
-        '_create_grids',
-        wraps=weekly_optimization_grid.WeeklyOptimizationGrid._create_grids,
-        autospec=True,
-    ) as mock_create_grids:
-      grid = weekly_grid.to_optimization_grid(
-          start_date=start_date,
-          end_date=end_date,
-      )
-      results_weekly = self.budget_optimizer_media_only.optimize(
-          new_data=new_data,
-          optimization_grid=grid,
-          spend_constraint_lower=0.1,
-          spend_constraint_upper=0.1,
-          start_date=start_date,
-          end_date=end_date,
-          budget=budget,
-      )
-      mock_create_grids.assert_called_once()
+    grid = weekly_grid.to_optimization_grid(
+        start_date=start_date,
+        end_date=end_date,
+    )
+    results_weekly = self.budget_optimizer_media_only.optimize(
+        new_data=new_data,
+        optimization_grid=grid,
+        spend_constraint_lower=0.1,
+        spend_constraint_upper=0.1,
+        start_date=start_date,
+        end_date=end_date,
+        budget=budget,
+    )
+    self.assertIs(results_weekly.optimization_grid, grid)
     results_standard = self.budget_optimizer_media_only.optimize(
         new_data=new_data,
         spend_constraint_lower=0.1,
@@ -1212,6 +1228,22 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
         [grid1, grid2]
     )
     self.assertIsNotNone(combined)
+    self.assertIsNotNone(combined._data_fingerprint)
+    self.assertEqual(combined._data_fingerprint, grid1._data_fingerprint)
+    changed_grid2 = weekly_optimization_grid.WeeklyOptimizationGrid.create(
+        self.budget_optimizer_media_only._analyzer,
+        new_data=tensors.DataTensors(
+            media=self.meridian_media_only.media_tensors.media * 1.1
+        ),
+        multiplier_step=0.5,
+        use_posterior=True,
+        start_date=model_times[3],
+        end_date=model_times[5],
+    )
+    changed_combined = weekly_optimization_grid.WeeklyOptimizationGrid.combine(
+        [grid1, changed_grid2]
+    )
+    self.assertIsNone(changed_combined._data_fingerprint)
     expected_times = model_times[:6]
     self.assertEqual(combined.time, expected_times)
     self.assertEqual(

@@ -2989,6 +2989,72 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     # Only called once in the test itself.
     mock_create_optimization_grid.assert_called_once()
 
+  @parameterized.named_parameters((name, name) for name in c.PERFORMANCE_DATA)
+  def test_optimize_rebuilds_grid_when_scenario_data_changes(self, field):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    filled_data = tensors.DataTensors().validate_and_fill_missing_data(
+        required_tensors_names=c.PERFORMANCE_DATA + (c.TIME,),
+        model_context=budget_optimizer._analyzer.model_context,
+    )
+    new_data = tensors.DataTensors(**{field: getattr(filled_data, field) * 1.1})
+    grid = budget_optimizer.create_optimization_grid(
+        gtol=0.01, use_optimal_frequency=False
+    )
+    options = dict(
+        new_data=new_data,
+        budget=float(np.sum(grid.historical_spend)),
+        gtol=0.01,
+        use_optimal_frequency=False,
+        spend_constraint_lower=0.1,
+        spend_constraint_upper=0.1,
+    )
+    with self.assertWarnsRegex(UserWarning, 'different scenario data'):
+      reused = budget_optimizer.optimize(optimization_grid=grid, **options)
+    fresh = budget_optimizer.optimize(**options)
+
+    self.assertIsNot(reused.optimization_grid, grid)
+    xr.testing.assert_allclose(reused.optimized_data, fresh.optimized_data)
+    xr.testing.assert_allclose(
+        reused.optimization_grid.grid_dataset,
+        fresh.optimization_grid.grid_dataset,
+    )
+
+  def test_optimize_rebuilds_scenario_grid_for_historical_data(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    new_data = tensors.DataTensors(
+        media=self.meridian_media_and_rf.media_tensors.media * 1.1
+    )
+    grid = budget_optimizer.create_optimization_grid(
+        new_data=new_data, gtol=0.01, use_optimal_frequency=False
+    )
+    with self.assertWarnsRegex(UserWarning, 'different scenario data'):
+      result = budget_optimizer.optimize(
+          optimization_grid=grid, gtol=0.01, use_optimal_frequency=False
+      )
+    self.assertIsNot(result.optimization_grid, grid)
+
+  def test_optimize_reuses_grid_with_equivalent_explicit_data(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    grid = budget_optimizer.create_optimization_grid(gtol=0.01)
+    filled_data = tensors.DataTensors().validate_and_fill_missing_data(
+        required_tensors_names=c.PERFORMANCE_DATA + (c.TIME,),
+        model_context=budget_optimizer._analyzer.model_context,
+    )
+    result = budget_optimizer.optimize(
+        optimization_grid=grid, new_data=filled_data, gtol=0.01
+    )
+    self.assertIs(result.optimization_grid, grid)
+
+  def test_optimize_rebuilds_grid_without_scenario_fingerprint(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    grid = dataclasses.replace(
+        budget_optimizer.create_optimization_grid(gtol=0.01),
+        _data_fingerprint=None,
+    )
+    with self.assertWarnsRegex(UserWarning, 'no scenario data fingerprint'):
+      result = budget_optimizer.optimize(optimization_grid=grid, gtol=0.01)
+    self.assertIsNot(result.optimization_grid, grid)
+
   def test_optimize_with_different_date_types_grid_reuses_grid(self):
     budget_optimizer = self.budget_optimizer_media_and_rf
     mock_create_optimization_grid = self.enter_context(
