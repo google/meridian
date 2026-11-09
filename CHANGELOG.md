@@ -23,6 +23,12 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `WeeklyOptimizationGrid.to_optimization_grid` prematurely rounding
+    historical channel spend before multiplying by the grid's edge spend
+    multipliers when validating optimization bounds, which could falsely reject
+    covered bounds for small channels or accept bounds slightly beyond grid
+    coverage.
+
 ## [2.2.0] - 2026-11-05
 
 *   Add a `balanced` option to `RandomHoldoutSpec` to balance held-out
