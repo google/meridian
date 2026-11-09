@@ -1962,3 +1962,173 @@ def sample_input_data_for_aks_with_expected_knot_info() -> (
       weights=knots.l1_distance_weights(117, expected_knots),  # pyrefly: ignore[bad-argument-type]
   )
   return data, expected_knot_info
+
+
+def _geometric_carryover(
+    media: np.ndarray, decay: np.ndarray, max_lag: int
+) -> np.ndarray:
+  """Spreads each time period's media over that period and the next ones.
+
+  Args:
+    media: Media of shape `(n_geos, n_times, n_channels)`.
+    decay: The share kept from one time period to the next, one per channel.
+    max_lag: The number of later time periods that media still affects.
+
+  Returns:
+    The carried-over media, with the same shape as `media`. The weights of the
+    lags sum to 1 for each channel.
+  """
+  n_times = media.shape[1]
+  lags = np.arange(max_lag + 1)
+  weights = decay[None, :] ** lags[:, None]
+  weights /= weights.sum(axis=0, keepdims=True)
+  carried_over = np.zeros_like(media)
+  # Lags of `n_times` or more reach past the last time period.
+  for lag in lags[lags < n_times]:
+    carried_over[:, lag:, :] += weights[lag] * media[:, : n_times - lag, :]
+  return carried_over
+
+
+def sample_input_data_with_changepoint(
+    *,
+    n_geos: int = 20,
+    n_times: int = 104,
+    changepoint_index: int = 52,
+    tv_roi: tuple[float, float] = (1.0, 2.0),
+    search_roi: float = 1.5,
+    seed: int = 0,
+) -> tuple[input_data.InputData, dict[str, tuple[float, ...]]]:
+  """Generates data where the ROI of one channel changes at a known date.
+
+  The data has a revenue KPI and two paid media channels, `TV` and `Search`,
+  with weekly time periods. TV's effect changes at the time period
+  `changepoint_index`, so that its ROI is `tv_roi[0]` before that date and
+  `tv_roi[1]` from that date on. Search has the same effect throughout, with ROI
+  `search_roi`.
+
+  Each channel's incremental revenue in a time period is its geo's effect
+  strength times a saturating (Hill-shaped) function of the media carried over
+  from up to 8 earlier time periods. The strength of each interval is chosen so
+  that the incremental revenue in the interval, divided by the spend in the
+  same interval, is the given ROI. This is how `Analyzer` defines the ROI of a
+  set of time periods, so a model with a changepoint at that date should
+  recover these ROIs. The KPI adds a geo baseline and noise.
+
+  The same arguments always give the same data.
+
+  Args:
+    n_geos: The number of geos.
+    n_times: The number of weekly time periods.
+    changepoint_index: The index of the first time period with TV's second
+      effect. Must be between 1 and `n_times - 1`.
+    tv_roi: TV's ROI before and from the changepoint.
+    search_roi: Search's ROI in all time periods.
+    seed: The seed of the random number generator.
+
+  Returns:
+    A tuple containing:
+      - The `InputData`, with `kpi_type='revenue'`. The media has the same time
+        periods as the KPI, without earlier media time periods.
+      - A mapping from each channel name to its true ROI in each interval: for
+        `TV`, the ROI before and from the changepoint, and for `Search`, its
+        ROI over all time periods. These are computed from the simulated
+        incremental revenue and spend.
+
+  Raises:
+    ValueError: If `changepoint_index` isn't between 1 and `n_times - 1`.
+  """
+  if not 0 < changepoint_index < n_times:
+    raise ValueError(
+        f'`changepoint_index` must be between 1 and {n_times - 1}, got'
+        f' {changepoint_index}.'
+    )
+  channels = ['TV', 'Search']
+  rng = np.random.default_rng(seed)
+  population = rng.uniform(1e5, 1e6, n_geos)
+  weeks = np.arange(n_times)
+  # TV runs in bursts; Search follows a yearly cycle.
+  tv_per_person = 1.0 + 0.8 * (np.sin(2 * np.pi * weeks / 13) > 0)
+  search_per_person = 1.0 + 0.5 * np.sin(2 * np.pi * weeks / 52 + 1.0)
+  media_per_person = np.stack([tv_per_person, search_per_person], axis=-1)[
+      None
+  ] * rng.lognormal(0.0, 0.25, (n_geos, n_times, len(channels)))
+  media = media_per_person * population[:, None, None]
+  spend = media * np.array([0.6, 0.4])
+
+  scaled_media = media_per_person / np.median(
+      media_per_person.reshape(-1, len(channels)), axis=0
+  )
+  carried_over = _geometric_carryover(
+      scaled_media, decay=np.array([0.6, 0.2]), max_lag=8
+  )
+  half_saturation = np.array([1.0, 0.8])
+  response = carried_over / (carried_over + half_saturation)
+  geo_strength = np.exp(0.2 * rng.standard_normal((n_geos, len(channels))))
+
+  intervals = {
+      'TV': [slice(0, changepoint_index), slice(changepoint_index, n_times)],
+      'Search': [slice(0, n_times)],
+  }
+  target_roi = {'TV': tv_roi, 'Search': (search_roi,)}
+  strength = np.zeros((n_geos, n_times, len(channels)))
+  for i, channel in enumerate(channels):
+    for interval, roi in zip(intervals[channel], target_roi[channel]):
+      revenue_per_unit_strength = np.sum(
+          population[:, None]
+          * geo_strength[:, None, i]
+          * response[:, interval, i]
+      )
+      level = roi * spend[:, interval, i].sum() / revenue_per_unit_strength
+      strength[:, interval, i] = level * geo_strength[:, None, i]
+  incremental_revenue = strength * response * population[:, None, None]
+
+  baseline = rng.normal(10.0, 1.0, n_geos)[:, None] * population[:, None]
+  noise = rng.normal(0.0, 0.3, (n_geos, n_times)) * population[:, None]
+  kpi = baseline + incremental_revenue.sum(axis=-1) + noise
+
+  true_roi = {
+      channel: tuple(
+          float(
+              incremental_revenue[:, interval, i].sum()
+              / spend[:, interval, i].sum()
+          )
+          for interval in intervals[channel]
+      )
+      for i, channel in enumerate(channels)
+  }
+
+  geos = _sample_names('geo_', n_geos)
+  times = _sample_times(n_times)
+  media_coords = {
+      c.GEO: geos,
+      c.MEDIA_TIME: times,
+      c.MEDIA_CHANNEL: channels,
+  }
+  data = input_data.InputData(
+      kpi=xr.DataArray(
+          kpi,
+          dims=[c.GEO, c.TIME],
+          coords={c.GEO: geos, c.TIME: times},
+          name=c.KPI,
+      ),
+      kpi_type=c.REVENUE,
+      population=xr.DataArray(
+          population,
+          dims=[c.GEO],
+          coords={c.GEO: geos},
+          name=c.POPULATION,
+      ),
+      media=xr.DataArray(
+          media,
+          dims=[c.GEO, c.MEDIA_TIME, c.MEDIA_CHANNEL],
+          coords=media_coords,
+          name=c.MEDIA,
+      ),
+      media_spend=xr.DataArray(
+          spend,
+          dims=[c.GEO, c.TIME, c.MEDIA_CHANNEL],
+          coords={c.GEO: geos, c.TIME: times, c.MEDIA_CHANNEL: channels},
+          name=c.MEDIA_SPEND,
+      ),
+  )
+  return data, true_roi
