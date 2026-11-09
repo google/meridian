@@ -314,14 +314,16 @@ experiments usually span both sections.
     *   `https://developers.google.com/meridian/docs/advanced-modeling/roi-priors-and-calibration`
         (Explains calibration of treatment priors using incrementality
         experiment results and domain knowledge, treating priors as guardrails
-        rather than flat priors. Discusses translating experiments into priors,
-        relevance considerations (recency, duration, media granularity,
-        population differences, complexity, estimand mismatch), and automated
-        adjustments via `CalibrationBuilder` with Meridian GeoX integration.
-        Shows constructing lognormal ROI priors with
+        rather than flat priors. Discusses relevance considerations (recency,
+        duration, media granularity, population differences, complexity,
+        estimand mismatch) and automated adjustments via `CalibrationBuilder`
+        with Meridian GeoX integration. Code examples show calibrating `roi_m`
+        and `roi_rf` via
+        `CalibrationBuilder.with_incrementality_experiment_result()` and
+        `build()`, constructing `LogNormal` priors with
         `lognormal_dist_from_mean_std` and `lognormal_dist_from_range` in
-        `PriorDistribution`, setting standard deviation by confidence, plotting
-        priors, using the `roi_calibration` period in `ModelSpec`, and checking
+        `PriorDistribution` and `ModelSpec`, setting standard deviation by
+        confidence, plotting priors, using `roi_calibration`, and checking
         prior-posterior shifts.)
     *   `https://developers.google.com/meridian/docs/advanced-modeling/set-custom-priors-past-experiments`
         (Explains automated prior calibration with `CalibrationBuilder`,
@@ -345,10 +347,16 @@ experiments usually span both sections.
         delegated to child distributions, and suggests first considering varying
         parameters within one family or switching families entirely.)
     *   `https://developers.google.com/meridian/docs/advanced-modeling/media-saturation-lagging`
-        (Explains how Meridian models lagged effects (Adstock) and saturation
-        effects (Hill function). Details the mathematical formulas, the
-        `hill_before_adstock` option, and notes that default priors assume a
-        concave shape to facilitate budget optimization.)
+        (Explains how Meridian models lagged media effects with the Adstock
+        function and diminishing marginal returns with the Hill saturation
+        function. Covers the Adstock formula over lag window `L` (`max_lag`,
+        default `8`) with decay parameter `alpha` and `adstock_decay_spec`
+        (`'geometric'` or `'binomial'`), the Hill formula with half-saturation
+        `ec` and `slope` (`slope <= 1` concave, `slope > 1` S-shaped; default
+        `slope_m` and `slope_om` priors assume concavity for budget optimization
+        and convergence), configuring `max_lag`, `adstock_decay_spec`, and
+        `hill_before_adstock` (default `False`) in `ModelSpec`, and caution when
+        extrapolating beyond observed media ranges.)
     *   `https://developers.google.com/meridian/docs/advanced-modeling/set-adstock-decay-spec-parameter`
         (Explains how to configure `adstock_decay_spec` (geometric or binomial).
         Geometric is best for short-lived effects, binomial for long-lived
