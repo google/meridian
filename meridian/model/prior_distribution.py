@@ -1604,6 +1604,12 @@ def _get_total_media_contribution_prior(
   return backend.tfd.LogNormal(lognormal_mu, lognormal_sigma, name=name)
 
 
+# `tfd.BatchBroadcast(dist)` returns an instance of this private base class of
+# `tfd.BatchBroadcast` when `dist` is not a `CompositeTensor`, for example an
+# `IndependentMultivariateDistribution`.
+_BATCH_BROADCAST_BASE_TYPE = backend.tfd.BatchBroadcast.__bases__[0]
+
+
 def _validate_support(
     parameter_name: str,
     tfp_dist: backend.tfp.distributions.Distribution,
@@ -1624,9 +1630,24 @@ def _validate_support(
     ValueError: If the distribution support is not within the parameter bounds.
   """
   # Note that `tfp.distributions.BatchBroadcast` objects have a `distribution`
-  # attribute that points to a `tfp.distributions.Distribution` object.
-  if isinstance(tfp_dist, backend.tfd.BatchBroadcast):
+  # attribute that points to a `tfp.distributions.Distribution` object. Use a
+  # loop, because `IndependentMultivariateDistribution` wraps scalar batch
+  # components in another `BatchBroadcast`.
+  while isinstance(tfp_dist, _BATCH_BROADCAST_BASE_TYPE):
     tfp_dist = tfp_dist.distribution
+  # Validate each component separately, so that the special cases below also
+  # apply to components. `IndependentMultivariateDistribution.quantile` calls
+  # the `quantile` method of each component, which is not reliable for
+  # `TruncatedNormal`.
+  if isinstance(tfp_dist, IndependentMultivariateDistribution):
+    for component in tfp_dist.distributions:
+      _validate_support(
+          parameter_name,
+          component,
+          bounds,
+          prevent_deterministic_prior_at_bounds,
+      )
+    return
   # Note that `tfp.distributions.Deterministic` does not have a `quantile`
   # method implemented, so the min and max values must be extracted from the
   # `loc` attribute instead.

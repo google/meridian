@@ -31,6 +31,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     earlier versions. To use the previous sampler, set the
     `MERIDIAN_FLAT_NUTS` environment variable to `false`. The previous sampler
     and this variable will be removed in the next major version.
+*   Fix `PriorDistribution` rejecting a valid `TruncatedNormal` prior that is a
+    component of an `IndependentMultivariateDistribution` when one of its
+    bounds is in an extreme tail of the untruncated normal distribution. The
+    support of each component is now checked separately.
 *   Fix `WeeklyOptimizationGrid.to_optimization_grid` prematurely rounding
     historical channel spend before multiplying by the grid's edge spend
     multipliers when validating optimization bounds, which could falsely reject

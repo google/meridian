@@ -2059,6 +2059,214 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
           ' unexpected ValueError.'
       )
 
+  def test_independent_multivariate_truncated_normal_with_extreme_bounds(
+      self,
+  ):
+    # Same as `test_truncated_normal_with_extreme_bounds`, but the
+    # TruncatedNormal is a component of an IndependentMultivariateDistribution.
+    # `tfd.TruncatedNormal(50, 0.5, 1, 51).quantile(0)` returns -inf, so the
+    # support check must not rely on the `quantile` method of the component.
+    try:
+      prior_distribution.PriorDistribution(
+          ec_m=prior_distribution.IndependentMultivariateDistribution([
+              backend.tfd.TruncatedNormal(
+                  backend.np_float_dtype(50),
+                  backend.np_float_dtype(0.5),
+                  backend.np_float_dtype(1),
+                  backend.np_float_dtype(51),
+              ),
+              backend.tfd.LogNormal(
+                  backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+              ),
+          ]),
+      )
+    except ValueError:
+      self.fail(
+          'IndependentMultivariateDistribution with a TruncatedNormal'
+          ' component with extreme bounds raised an unexpected ValueError.'
+      )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='truncated_normal_below_minimum',
+          param_name='ec_m',
+          get_component=lambda: backend.tfd.TruncatedNormal(
+              backend.np_float_dtype(1),
+              backend.np_float_dtype(1),
+              backend.np_float_dtype(-1),
+              backend.np_float_dtype(2),
+          ),
+          error_regex='ec_m .* allows values less than the parameter minimum 0',
+      ),
+      dict(
+          testcase_name='truncated_normal_above_maximum',
+          param_name='alpha_m',
+          get_component=lambda: backend.tfd.TruncatedNormal(
+              backend.np_float_dtype(0.5),
+              backend.np_float_dtype(0.1),
+              backend.np_float_dtype(0),
+              backend.np_float_dtype(2),
+          ),
+          error_regex=(
+              'alpha_m .* allows values greater than the parameter maximum 1'
+          ),
+      ),
+      dict(
+          testcase_name='batch_broadcast_truncated_normal_below_minimum',
+          param_name='ec_m',
+          get_component=lambda: backend.tfd.BatchBroadcast(
+              backend.tfd.TruncatedNormal(
+                  backend.np_float_dtype(1),
+                  backend.np_float_dtype(1),
+                  backend.np_float_dtype(-1),
+                  backend.np_float_dtype(2),
+              ),
+              (2,),
+          ),
+          error_regex='ec_m .* allows values less than the parameter minimum 0',
+      ),
+  )
+  def test_independent_multivariate_component_outside_bounds_raises(
+      self,
+      param_name: str,
+      get_component: Callable[[], backend.tfd.Distribution],
+      error_regex: str,
+  ):
+    dist = prior_distribution.IndependentMultivariateDistribution([
+        backend.tfd.Uniform(
+            backend.np_float_dtype(0.1), backend.np_float_dtype(0.9)
+        ),
+        get_component(),
+    ])
+    with self.assertRaisesRegex(ValueError, error_regex):
+      prior_distribution.PriorDistribution(**{param_name: dist})
+
+  def test_independent_multivariate_deterministic_component_at_bound_raises(
+      self,
+  ):
+    # `IndependentMultivariateDistribution` rejects a bare `Deterministic`
+    # component, but not one wrapped in `BatchBroadcast`.
+    dist = prior_distribution.IndependentMultivariateDistribution([
+        backend.tfd.BatchBroadcast(
+            backend.tfd.Deterministic(backend.np_float_dtype(1)), (2,)
+        ),
+        backend.tfd.BatchBroadcast(
+            backend.tfd.Deterministic(backend.np_float_dtype(0)), (2,)
+        ),
+    ])
+    with self.assertRaisesRegex(ValueError, 'ec_m was assigned a point mass'):
+      prior_distribution.PriorDistribution(ec_m=dist)
+
+  def test_batch_broadcast_independent_multivariate_deterministic_raises(self):
+    # `tfd.BatchBroadcast` of a distribution that is not a `CompositeTensor`,
+    # such as `IndependentMultivariateDistribution`, returns an instance of a
+    # private base class of `tfd.BatchBroadcast`.
+    dist = prior_distribution.IndependentMultivariateDistribution([
+        backend.tfd.BatchBroadcast(
+            backend.tfd.Deterministic(backend.np_float_dtype(1)), (1,)
+        ),
+        backend.tfd.BatchBroadcast(
+            backend.tfd.Deterministic(backend.np_float_dtype(0)), (1,)
+        ),
+    ])
+    with self.assertRaisesRegex(ValueError, 'ec_m was assigned a point mass'):
+      prior_distribution.PriorDistribution(
+          ec_m=backend.tfd.BatchBroadcast(dist, 2)
+      )
+
+  def test_broadcast_independent_multivariate_extreme_truncated_normal(self):
+    # `broadcast` wraps each prior in `tfd.BatchBroadcast` and validates the
+    # support again.
+    prior = prior_distribution.PriorDistribution(
+        ec_m=prior_distribution.IndependentMultivariateDistribution([
+            backend.tfd.TruncatedNormal(
+                backend.np_float_dtype(50),
+                backend.np_float_dtype(0.5),
+                backend.np_float_dtype(1),
+                backend.np_float_dtype(51),
+            ),
+            backend.tfd.LogNormal(
+                backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+            ),
+        ]),
+    )
+    try:
+      prior.broadcast(
+          n_geos=_N_GEOS,
+          n_media_channels=2,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+          n_controls=_N_CONTROLS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+          unique_sigma_for_each_geo=True,
+          n_knots=_N_KNOTS,
+          is_national=False,
+          set_total_media_contribution_prior=False,
+          kpi=1.0,
+          total_spend=np.array([]),
+      )
+    except ValueError:
+      self.fail(
+          'Broadcasting an IndependentMultivariateDistribution with a'
+          ' TruncatedNormal component with extreme bounds raised an'
+          ' unexpected ValueError.'
+      )
+
+  def test_independent_multivariate_nested_batch_broadcast_component(self):
+    # `IndependentMultivariateDistribution` wraps a scalar batch component in
+    # another `tfd.BatchBroadcast`, so the component is wrapped twice.
+    try:
+      prior_distribution.PriorDistribution(
+          ec_m=prior_distribution.IndependentMultivariateDistribution([
+              backend.tfd.BatchBroadcast(
+                  backend.tfd.TruncatedNormal(
+                      backend.np_float_dtype(50),
+                      backend.np_float_dtype(0.5),
+                      backend.np_float_dtype(1),
+                      backend.np_float_dtype(51),
+                  ),
+                  (),
+              ),
+              backend.tfd.LogNormal(
+                  backend.np_float_dtype(0.0), backend.np_float_dtype(1.0)
+              ),
+          ]),
+      )
+    except ValueError:
+      self.fail(
+          'IndependentMultivariateDistribution with a BatchBroadcast'
+          ' TruncatedNormal component with extreme bounds raised an'
+          ' unexpected ValueError.'
+      )
+
+  def test_independent_multivariate_quantile_not_implemented_checks_others(
+      self,
+  ):
+
+    class _NoQuantileDistribution(backend.tfd.Normal):
+
+      def _quantile(self, value):
+        raise NotImplementedError('Quantile is not implemented.')
+
+    dist = prior_distribution.IndependentMultivariateDistribution([
+        _NoQuantileDistribution(
+            backend.np_float_dtype(0.5), backend.np_float_dtype(0.1)
+        ),
+        backend.tfd.Uniform(
+            backend.np_float_dtype(0), backend.np_float_dtype(2)
+        ),
+    ])
+    with self.assertWarnsRegex(
+        UserWarning,
+        'The prior distribution for alpha_m does not have a `quantile` method',
+    ):
+      with self.assertRaisesRegex(
+          ValueError,
+          'alpha_m .* allows values greater than the parameter maximum 1',
+      ):
+        prior_distribution.PriorDistribution(alpha_m=dist)
+
   def test_quantile_not_implemented_raises_warning(self):
 
     class _NoQuantileDistribution(backend.tfd.Normal):
