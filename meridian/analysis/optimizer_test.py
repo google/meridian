@@ -6998,5 +6998,33 @@ class BudgetOptimizerChangepointsTest(backend_test_utils.MeridianTestCase):
         )
 
 
+class RaiseIfChangepointsTest(parameterized.TestCase):
+  # pylint: disable=protected-access
+
+  @parameterized.named_parameters(
+      ('model_spec', spec.ModelSpec),
+      ('no_changepoints', spec._ModelSpecWithChangepoints),
+      (
+          'empty_changepoints',
+          lambda: spec._ModelSpecWithChangepoints(changepoints={}),
+      ),
+      ('mock', mock.MagicMock),
+  )
+  def test_model_without_changepoints_does_not_raise(self, make_model_spec):
+    optimizer._raise_if_changepoints(make_model_spec(), '`Surface`')
+
+  def test_model_with_changepoints_raises(self):
+    model_spec = spec._ModelSpecWithChangepoints(
+        changepoints={'tv': ['2024-01-08']}
+    )
+    with self.assertRaisesWithLiteralMatch(
+        NotImplementedError,
+        '`Surface` does not support models with `changepoints` yet: its'
+        ' results would not reflect the time-varying effects. Use'
+        ' `BudgetOptimizer.optimize` instead.',
+    ):
+      optimizer._raise_if_changepoints(model_spec, '`Surface`')
+
+
 if __name__ == '__main__':
   absltest.main()

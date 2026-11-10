@@ -176,10 +176,11 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
             }
         ),
     )
-    with self.assertRaisesRegex(
+    with self.assertRaisesWithLiteralMatch(
         NotImplementedError,
         '`WeeklyOptimizationGrid` does not support models with `changepoints`'
-        ' yet: its results would not reflect the time-varying effects.',
+        ' yet: its results would not reflect the time-varying effects. Use'
+        ' `BudgetOptimizer.optimize` instead.',
     ):
       weekly_optimization_grid.WeeklyOptimizationGrid.create(
           analyzer.Analyzer(

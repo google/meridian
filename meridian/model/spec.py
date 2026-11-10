@@ -1088,8 +1088,10 @@ class ModelSpec:
 class _ModelSpecWithChangepoints(ModelSpec):
   """A `ModelSpec` with time-varying media effects. Internal only.
 
-  `WeeklyOptimizationGrid` and `ReachFrequencyOptimizationProcessor` raise
-  `NotImplementedError` for a model with changepoints.
+  `WeeklyOptimizationGrid`, `BudgetOptimizationProcessor`,
+  `ReachFrequencyOptimizationProcessor` and budget optimization in the scenario
+  planner's `MmmUiProtoGenerator` raise `NotImplementedError` for a model with
+  changepoints. Use `BudgetOptimizer.optimize` instead.
 
   Attributes:
     changepoints: Maps a paid media or reach and frequency channel name to the
