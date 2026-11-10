@@ -2474,8 +2474,22 @@ class MediaSummaryTest(parameterized.TestCase):
 
     self.assertEqual(plot.mark.type, "line")
     self.assertTrue(plot.mark.point)
+    self.assertEqual(
+        plot.mark.point.fill,
+        alt.expr(
+            f'datum.{c.INCREMENTAL_OUTCOME} == 0 ? "white" :'
+            f' scale("color", datum.{c.CHANNEL})'
+        ),
+    )
+    self.assertEqual(
+        plot.mark.point.stroke,
+        alt.expr(
+            f'datum.{c.INCREMENTAL_OUTCOME} == 0 ?'
+            f' scale("color", datum.{c.CHANNEL}) : null'
+        ),
+    )
 
-    self.assertEqual(plot.encoding.y.shorthand, "rank:Q")
+    self.assertEqual(plot.encoding.y.shorthand, f"{c.RANK}:Q")
     self.assertEqual(plot.encoding.y["title"], "Contribution Rank")
     self.assertTrue(plot.encoding.y["scale"].reverse)
     self.assertFalse(plot.encoding.y["scale"].zero)
@@ -2625,6 +2639,8 @@ class MediaSummaryTest(parameterized.TestCase):
       mock_all_metrics.return_value = summary_metrics
       plot = self.media_summary_revenue.plot_channel_contribution_bump_chart()
 
+    # No zero-contribution points at quarter ends, so no legend-only layer.
+    self.assertIsInstance(plot, alt.Chart)
     df = plot.data
 
     expected_columns = [
@@ -2632,7 +2648,7 @@ class MediaSummaryTest(parameterized.TestCase):
         c.CHANNEL,
         c.INCREMENTAL_OUTCOME,
         c.PCT_OF_CONTRIBUTION,
-        "rank",
+        c.RANK,
     ]
     self.assertListEqual(list(df.columns), expected_columns)
 
@@ -2644,25 +2660,25 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(
         df.loc[
             (df[c.TIME] == q1_date) & (df[c.CHANNEL] == c.BASELINE),
-            "rank",
+            c.RANK,
         ].item(),
         1.0,
     )
     self.assertEqual(
         df.loc[
-            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "Ch3"), "rank"
+            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "Ch3"), c.RANK
         ].item(),
         2.0,
     )
     self.assertEqual(
         df.loc[
-            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "Ch1"), "rank"
+            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "Ch1"), c.RANK
         ].item(),
         3.0,
     )
     self.assertEqual(
         df.loc[
-            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "Ch2"), "rank"
+            (df[c.TIME] == q1_date) & (df[c.CHANNEL] == "Ch2"), c.RANK
         ].item(),
         4.0,
     )
@@ -2671,25 +2687,25 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(
         df.loc[
             (df[c.TIME] == q2_date) & (df[c.CHANNEL] == c.BASELINE),
-            "rank",
+            c.RANK,
         ].item(),
         1.0,
     )
     self.assertEqual(
         df.loc[
-            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "Ch2"), "rank"
+            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "Ch2"), c.RANK
         ].item(),
         2.0,
     )
     self.assertEqual(
         df.loc[
-            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "Ch1"), "rank"
+            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "Ch1"), c.RANK
         ].item(),
         3.0,
     )
     self.assertEqual(
         df.loc[
-            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "Ch3"), "rank"
+            (df[c.TIME] == q2_date) & (df[c.CHANNEL] == "Ch3"), c.RANK
         ].item(),
         4.0,
     )
@@ -2698,26 +2714,26 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertEqual(
         df.loc[
             (df[c.TIME] == q3_date) & (df[c.CHANNEL] == "Ch3"),
-            "rank",
+            c.RANK,
         ].item(),
         1.0,
     )
     self.assertEqual(
         df.loc[
             (df[c.TIME] == q3_date) & (df[c.CHANNEL] == c.BASELINE),
-            "rank",
+            c.RANK,
         ].item(),
         2.0,
     )
     self.assertEqual(
         df.loc[
-            (df[c.TIME] == q3_date) & (df[c.CHANNEL] == "Ch1"), "rank"
+            (df[c.TIME] == q3_date) & (df[c.CHANNEL] == "Ch1"), c.RANK
         ].item(),
         3.0,
     )
     self.assertEqual(
         df.loc[
-            (df[c.TIME] == q3_date) & (df[c.CHANNEL] == "Ch2"), "rank"
+            (df[c.TIME] == q3_date) & (df[c.CHANNEL] == "Ch2"), c.RANK
         ].item(),
         4.0,
     )
@@ -2725,6 +2741,207 @@ class MediaSummaryTest(parameterized.TestCase):
     # Verify correct channels are present (Baseline + the mocked channels)
     expected_channels_in_plot = {"Ch1", "Ch2", "Ch3", c.BASELINE}
     self.assertSetEqual(set(df[c.CHANNEL].unique()), expected_channels_in_plot)
+
+  def test_media_summary_plot_channel_contribution_bump_chart_zero_contribution_tie_breaker(
+      self,
+  ):
+    times = [
+        "2023-03-26",  # Q1 End
+        "2023-06-25",  # Q2 End
+        "2023-09-24",  # Q3 End
+    ]
+    # Total incremental outcome across Q1-Q3:
+    # - baseline: 2000 + 1100 + 4700 = 7800
+    # - Ch_Always: 1000 + 1100 + 1500 = 3600
+    # - Ch_Late: 0 + 0 + 2500 = 2500
+    # - Ch_OnOffOn: 1200 + 0 + 800 = 2000
+    # - Ch_ZeroAll: 0 + 0 + 0 = 0
+    # - Ch_Negative: -200 + 0 + -100 = -300
+    channels = [
+        "Ch_Always",
+        "Ch_Late",
+        "Ch_OnOffOn",
+        "Ch_Negative",
+        "Ch_ZeroAll",
+        c.ALL_CHANNELS,
+    ]
+    metrics = [c.MEAN]
+    distributions = [c.POSTERIOR]
+    dims = [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION]
+
+    summary_metrics = xr.Dataset(
+        data_vars={
+            c.INCREMENTAL_OUTCOME: (
+                dims,
+                np.array([
+                    # Q1: Always(1000), Late(0), OnOffOn(1200), Neg(-200),
+                    # ZeroAll(0)
+                    [[[1000]], [[0]], [[1200]], [[-200]], [[0]], [[2000]]],
+                    # Q2: Always(1100), Late(0), OnOffOn(0), Neg(0), ZeroAll(0)
+                    [[[1100]], [[0]], [[0]], [[0]], [[0]], [[1100]]],
+                    # Q3: Always(1500), Late(2500), OnOffOn(800), Neg(-100),
+                    # ZeroAll(0)
+                    [
+                        [[1500]],
+                        [[2500]],
+                        [[800]],
+                        [[-100]],
+                        [[0]],
+                        [[4700]],
+                    ],
+                ]).astype(np.float32),
+            ),
+            c.PCT_OF_CONTRIBUTION: (
+                dims,
+                np.array([
+                    [[[0]], [[0]], [[0]], [[0]], [[0]], [[50]]],
+                    [[[0]], [[0]], [[0]], [[0]], [[0]], [[50]]],
+                    [[[0]], [[0]], [[0]], [[0]], [[0]], [[50]]],
+                ]),
+            ),
+            c.EFFECTIVENESS: (
+                dims,
+                np.zeros(
+                    (
+                        len(times),
+                        len(channels),
+                        len(metrics),
+                        len(distributions),
+                    ),
+                ),
+            ),
+        },
+        coords={
+            c.TIME: times,
+            c.CHANNEL: channels,
+            c.METRIC: metrics,
+            c.DISTRIBUTION: distributions,
+        },
+        attrs={c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL},
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot = self.media_summary_revenue.plot_channel_contribution_bump_chart()
+
+    # Zero-contribution points add a single legend-only layer.
+    self.assertIsInstance(plot, alt.LayerChart)
+    self.assertLen(plot.layer, 2)
+    line_layer, zero_legend_layer = plot.layer
+    self.assertEqual(line_layer.mark.type, "line")
+    self.assertEqual(zero_legend_layer.mark.type, "point")
+    self.assertEqual(zero_legend_layer.mark.opacity, 0)
+    self.assertIsInstance(zero_legend_layer.data, pd.DataFrame)
+    self.assertListEqual(
+        zero_legend_layer.data.iloc[:, 0].tolist(),
+        [summary_text.ZERO_CONTRIBUTION_LEGEND_LABEL],
+    )
+    zero_legend = zero_legend_layer.encoding.shape["legend"]
+    self.assertEqual(zero_legend.orient, "bottom")
+    self.assertEqual(zero_legend.symbolFillColor, "white")
+    self.assertEqual(zero_legend.symbolStrokeColor, c.GREY_700)
+    self.assertEqual(
+        plot.title.text, summary_text.CHANNEL_CONTRIB_RANK_CHART_TITLE
+    )
+
+    self.assertIsInstance(line_layer.data, pd.DataFrame)
+    df = line_layer.data
+    q1_date = np.datetime64("2023-03-26")
+    q2_date = np.datetime64("2023-06-25")
+    q3_date = np.datetime64("2023-09-24")
+
+    expected_channels = {
+        c.BASELINE,
+        "Ch_Always",
+        "Ch_Late",
+        "Ch_Negative",
+        "Ch_OnOffOn",
+        "Ch_ZeroAll",
+    }
+    self.assertSetEqual(set(df[c.CHANNEL].unique()), expected_channels)
+    self.assertListEqual(
+        line_layer.encoding.color["scale"].domain,
+        [
+            c.BASELINE,
+            "Ch_Always",
+            "Ch_Late",
+            "Ch_Negative",
+            "Ch_OnOffOn",
+            "Ch_ZeroAll",
+        ],
+    )
+
+    # Q1: Base(2000)->1, Ch_OnOffOn(1200)->2, Ch_Always(1000)->3,
+    # Ch_Late(0, total=2500)->4, Ch_ZeroAll(0, total=0)->5,
+    # Ch_Negative(-200)->6
+    q1_df = df[df[c.TIME] == q1_date]
+    self.assertSetEqual(set(q1_df[c.CHANNEL]), expected_channels)
+    self.assertEqual(
+        q1_df.loc[q1_df[c.CHANNEL] == c.BASELINE, c.RANK].item(), 1.0
+    )
+    self.assertEqual(
+        q1_df.loc[q1_df[c.CHANNEL] == "Ch_OnOffOn", c.RANK].item(), 2.0
+    )
+    self.assertEqual(
+        q1_df.loc[q1_df[c.CHANNEL] == "Ch_Always", c.RANK].item(), 3.0
+    )
+    self.assertEqual(
+        q1_df.loc[q1_df[c.CHANNEL] == "Ch_Late", c.RANK].item(), 4.0
+    )
+    self.assertEqual(
+        q1_df.loc[q1_df[c.CHANNEL] == "Ch_ZeroAll", c.RANK].item(), 5.0
+    )
+    self.assertEqual(
+        q1_df.loc[q1_df[c.CHANNEL] == "Ch_Negative", c.RANK].item(), 6.0
+    )
+
+    # Q2: Base(1100, total=7800)->1, Ch_Always(1100, total=3600)->2;
+    # Zero ties broken by total outcome: Ch_Late(2500)->3, Ch_OnOffOn(2000)->4,
+    # Ch_ZeroAll(0)->5, Ch_Negative(-300)->6
+    q2_df = df[df[c.TIME] == q2_date]
+    self.assertSetEqual(set(q2_df[c.CHANNEL]), expected_channels)
+    self.assertEqual(
+        q2_df.loc[q2_df[c.CHANNEL] == c.BASELINE, c.RANK].item(), 1.0
+    )
+    self.assertEqual(
+        q2_df.loc[q2_df[c.CHANNEL] == "Ch_Always", c.RANK].item(), 2.0
+    )
+    self.assertEqual(
+        q2_df.loc[q2_df[c.CHANNEL] == "Ch_Late", c.RANK].item(), 3.0
+    )
+    self.assertEqual(
+        q2_df.loc[q2_df[c.CHANNEL] == "Ch_OnOffOn", c.RANK].item(), 4.0
+    )
+    self.assertEqual(
+        q2_df.loc[q2_df[c.CHANNEL] == "Ch_ZeroAll", c.RANK].item(), 5.0
+    )
+    self.assertEqual(
+        q2_df.loc[q2_df[c.CHANNEL] == "Ch_Negative", c.RANK].item(), 6.0
+    )
+
+    # Q3: Base(4700)->1, Ch_Late(2500)->2, Ch_Always(1500)->3,
+    # Ch_OnOffOn(800)->4, Ch_ZeroAll(0)->5, Ch_Negative(-100)->6
+    q3_df = df[df[c.TIME] == q3_date]
+    self.assertSetEqual(set(q3_df[c.CHANNEL]), expected_channels)
+    self.assertEqual(
+        q3_df.loc[q3_df[c.CHANNEL] == c.BASELINE, c.RANK].item(), 1.0
+    )
+    self.assertEqual(
+        q3_df.loc[q3_df[c.CHANNEL] == "Ch_Late", c.RANK].item(), 2.0
+    )
+    self.assertEqual(
+        q3_df.loc[q3_df[c.CHANNEL] == "Ch_Always", c.RANK].item(), 3.0
+    )
+    self.assertEqual(
+        q3_df.loc[q3_df[c.CHANNEL] == "Ch_OnOffOn", c.RANK].item(), 4.0
+    )
+    self.assertEqual(
+        q3_df.loc[q3_df[c.CHANNEL] == "Ch_ZeroAll", c.RANK].item(), 5.0
+    )
+    self.assertEqual(
+        q3_df.loc[q3_df[c.CHANNEL] == "Ch_Negative", c.RANK].item(), 6.0
+    )
 
   def test_media_summary_plot_waterfall_chart_correct_data(self):
     summary_metrics = xr.Dataset(

@@ -28,6 +28,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     multipliers when validating optimization bounds, which could falsely reject
     covered bounds for small channels or accept bounds slightly beyond grid
     coverage.
+*   Indicate zero-contribution periods with unfilled circles (with a matching
+    legend entry) in `MediaSummary.plot_channel_contribution_bump_chart` and
+    break ranking ties by total incremental outcome across the plotted time
+    periods.
 
 ## [2.2.0] - 2026-11-05
 
