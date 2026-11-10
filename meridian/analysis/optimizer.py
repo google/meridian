@@ -156,7 +156,7 @@ class OptimizationGrid:
   # Fingerprint of the paid media data, `revenue_per_kpi` and spend the grid was
   # computed from. `None` if unknown, in which case the data is not checked when
   # the grid is reused.
-  _paid_data_fingerprint: str | None = None
+  _data_fingerprint: str | None = None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -2239,14 +2239,14 @@ class BudgetOptimizer:
       )
       return False
 
-    grid_fingerprint = optimization_grid._paid_data_fingerprint  # pylint: disable=protected-access
+    grid_fingerprint = optimization_grid._data_fingerprint  # pylint: disable=protected-access
     if (
         grid_fingerprint is not None
-        and grid_fingerprint != _paid_data_fingerprint(filled_data)
+        and grid_fingerprint != _data_fingerprint(filled_data)
     ):
       warnings.warn(
-          'Given optimization grid was created from different media data (e.g.'
-          ' impressions, reach, frequency or `revenue_per_kpi`) than the'
+          'Given optimization grid was created from different data (e.g. media'
+          ' impressions, reach, frequency, spend or `revenue_per_kpi`) than the'
           ' optimization request uses. A new grid will be created.'
       )
       return False
@@ -2524,7 +2524,7 @@ class BudgetOptimizer:
         selected_geos=selected_geos,
         selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
         _changepoint_effect=_changepoint_effect,
-        _paid_data_fingerprint=_paid_data_fingerprint(filled_data),
+        _data_fingerprint=_data_fingerprint(filled_data),
     )
 
   def _create_grid_dataset(
@@ -3442,7 +3442,7 @@ def get_optimization_bounds(
   return (lower, upper)
 
 
-def _paid_data_fingerprint(data: tensors.DataTensors) -> str:
+def _data_fingerprint(data: tensors.DataTensors) -> str:
   """Returns a digest of the data that an optimization grid depends on.
 
   This covers the paid media data, `revenue_per_kpi` and the media and RF spend.

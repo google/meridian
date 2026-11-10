@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `BudgetOptimizer.optimize` silently reusing a given `optimization_grid`
+    after the media, reach, frequency, spend or `revenue_per_kpi` data changed.
+    The grid now records a fingerprint of the data it was built from, and a new
+    grid is created (with a warning) when the data in the request differs.
+
 *   Fix `WeeklyOptimizationGrid.to_optimization_grid` prematurely rounding
     historical channel spend before multiplying by the grid's edge spend
     multipliers when validating optimization bounds, which could falsely reject
