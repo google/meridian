@@ -153,7 +153,7 @@ class OptimizationGrid:
   # TODO: Make it public when time-varying media effects are
   # released.
   _changepoint_effect: _ChangepointEffectArg | None = None
-  # Fingerprint of the paid media data (and `revenue_per_kpi`) the grid was
+  # Fingerprint of the paid media data, `revenue_per_kpi` and spend the grid was
   # computed from. `None` if unknown, in which case the data is not checked when
   # the grid is reused.
   _paid_data_fingerprint: str | None = None
@@ -3443,9 +3443,12 @@ def get_optimization_bounds(
 
 
 def _paid_data_fingerprint(data: tensors.DataTensors) -> str:
-  """Returns a digest of the paid data that an optimization grid depends on."""
+  """Returns a digest of the data that an optimization grid depends on.
+
+  This covers the paid media data, `revenue_per_kpi` and the media and RF spend.
+  """
   digest = hashlib.sha256()
-  for name in c.PAID_DATA:
+  for name in c.PERFORMANCE_DATA:
     value = getattr(data, name)
     digest.update(name.encode())
     if value is None:

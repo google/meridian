@@ -3183,7 +3183,35 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
 
     with self.assertWarnsRegex(
         UserWarning,
-        'created from different media data.*A new grid will be created',
+        'created from different data.*A new grid will be created',
+    ):
+      budget_optimizer.optimize(
+          new_data=new_data, optimization_grid=grid, gtol=gtol
+      )
+
+    # Called once in the test itself and once for the stale grid.
+    self.assertEqual(mock_create_optimization_grid.call_count, 2)
+
+  def test_optimize_with_changed_media_spend_creates_new_grid(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+        )
+    )
+    # Set larger gtol to avoid timeouts.
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(gtol=gtol)
+    new_data = tensors.DataTensors(
+        media_spend=self.meridian_media_and_rf.media_tensors.media_spend * 2,  # pyrefly: ignore[unsupported-operation]
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        'created from different data.*A new grid will be created',
     ):
       budget_optimizer.optimize(
           new_data=new_data, optimization_grid=grid, gtol=gtol
