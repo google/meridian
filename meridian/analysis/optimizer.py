@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import math
 import os
 from typing import Any, TypeAlias, TypeVar
@@ -153,6 +154,10 @@ class OptimizationGrid:
   # TODO: Make it public when time-varying media effects are
   # released.
   _changepoint_effect: _ChangepointEffectArg | None = None
+  # Fingerprint of the paid media data, `revenue_per_kpi` and spend the grid was
+  # computed from. `None` if unknown, in which case the data is not checked when
+  # the grid is reused.
+  _data_fingerprint: str | None = None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -2266,6 +2271,18 @@ class BudgetOptimizer:
       )
       return False
 
+    grid_fingerprint = optimization_grid._data_fingerprint  # pylint: disable=protected-access
+    if (
+        grid_fingerprint is not None
+        and grid_fingerprint != _data_fingerprint(filled_data)
+    ):
+      warnings.warn(
+          'Given optimization grid was created from different data (e.g. media'
+          ' impressions, reach, frequency, spend or `revenue_per_kpi`) than the'
+          ' optimization request uses. A new grid will be created.'
+      )
+      return False
+
     n_channels = len(optimization_grid.channels)
     selected_times = _expand_selected_times(
         model_context=self._analyzer.model_context,
@@ -2539,6 +2556,7 @@ class BudgetOptimizer:
         selected_geos=selected_geos,
         selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
         _changepoint_effect=_changepoint_effect,
+        _data_fingerprint=_data_fingerprint(filled_data),
     )
 
   def _create_grid_dataset(
@@ -3454,6 +3472,24 @@ def get_optimization_bounds(
   lower = np.round((spend_bounds[0] * rounded_spend), round_factor).astype(int)
   upper = np.round(spend_bounds[1] * rounded_spend, round_factor).astype(int)
   return (lower, upper)
+
+
+def _data_fingerprint(data: tensors.DataTensors) -> str:
+  """Returns a digest of the data that an optimization grid depends on.
+
+  This covers the paid media data, `revenue_per_kpi` and the media and RF spend.
+  """
+  digest = hashlib.sha256()
+  for name in c.PERFORMANCE_DATA:
+    value = getattr(data, name)
+    digest.update(name.encode())
+    if value is None:
+      continue
+    array = np.ascontiguousarray(np.asarray(value))
+    digest.update(str(array.shape).encode())
+    digest.update(str(array.dtype).encode())
+    digest.update(array.tobytes())
+  return digest.hexdigest()
 
 
 def get_round_factor(budget: float, gtol: float) -> int:
