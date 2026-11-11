@@ -2322,7 +2322,7 @@ class BudgetOptimizer:
   @_with_changepoint_effect
   def create_optimization_grid(
       self,
-      new_data: xr.Dataset | None = None,
+      new_data: analyzer_module.DataTensors | None = None,
       use_posterior: bool = True,
       selected_geos: Sequence[str] | None = None,
       # TODO: Remove this argument.
