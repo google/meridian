@@ -2881,5 +2881,236 @@ class XlaWindowedAdaptiveNutsTest(BackendTest):
     self.assertIn("progress sink unavailable", str(runtime_warnings[0].message))
 
 
+class FlatWindowedAdaptiveNutsTest(parameterized.TestCase):
+  """Tests NUTS on one flat state, the default (`MERIDIAN_FLAT_NUTS`)."""
+
+  def setUp(self):
+    super().setUp()
+    self._original_backend = config.get_backend()
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", FutureWarning)
+      config.set_backend(_JAX)
+    importlib.reload(backend)
+    env = dict(os.environ)
+    env.pop("MERIDIAN_FLAT_NUTS", None)
+    self.enter_context(mock.patch.dict(os.environ, env, clear=True))
+
+  def tearDown(self):
+    super().tearDown()
+    with warnings.catch_warnings():
+      warnings.simplefilter("ignore", (UserWarning, FutureWarning))
+      config.set_backend(self._original_backend)
+    importlib.reload(backend)
+
+  def _get_pinned_model(self):
+    """A model with constrained, multi-dimensional and simplex latents."""
+    tfd = backend.tfd
+
+    def model():
+      scale = yield tfd.HalfNormal(
+          backend.to_tensor(1.0, dtype=backend.float_dtype), name="scale"
+      )
+      loc = yield tfd.Normal(
+          backend.zeros([2, 3], dtype=backend.float_dtype), 1.0, name="loc"
+      )
+      weights = yield tfd.Dirichlet(
+          backend.ones([3], dtype=backend.float_dtype), name="weights"
+      )
+      yield tfd.Normal(
+          backend.reduce_sum(loc * weights, axis=-1), scale, name="obs"
+      )
+
+    joint_dist = tfd.JointDistributionCoroutineAutoBatched(model)
+    return joint_dist.experimental_pin(
+        obs=backend.to_tensor([0.5, -1.0], dtype=backend.float_dtype)
+    )
+
+  def test_flat_target_and_init_match_windowed_sampling(self):
+    windowed_sampling = importlib.import_module(
+        "tensorflow_probability.substrates.jax.experimental.mcmc."
+        "windowed_sampling"
+    )
+    pinned = self._get_pinned_model()
+    seed = jax.random.PRNGKey(7)
+    setup_seed, _ = windowed_sampling.samplers.split_seed(seed, n=2)
+    target, init, *_ = windowed_sampling._setup_mcmc(  # pylint: disable=protected-access
+        pinned, n_chains=[4], seed=setup_seed
+    )
+
+    flat_nuts_setup = getattr(backend, "_flat_nuts_setup")
+    setup = flat_nuts_setup(pinned, 4, current_state=None, seed=seed)
+    flat_dist, flat_init, bijector = (
+        setup.target,
+        setup.initial_state,
+        setup.bijector,
+    )
+
+    # scale: 1, loc: 6, weights: 2 (a 3-simplex is 2-dimensional).
+    self.assertEqual(tuple(flat_init.shape), (4, 9))
+    test_utils.assert_allclose(flat_init, jnp.concatenate(init, axis=-1))
+    points = jax.random.normal(jax.random.PRNGKey(1), [5, 4, 9])
+    points = points.astype(flat_init.dtype)
+    split_points = jnp.split(points, [1, 7], axis=-1)
+    test_utils.assert_allclose(
+        flat_dist.unnormalized_log_prob([points]),
+        target(*split_points),
+        rtol=1e-6,
+    )
+    latents = bijector.forward(points)
+    self.assertEqual(tuple(latents.loc.shape), (5, 4, 2, 3))
+    test_utils.assert_allclose(
+        backend.reduce_sum(latents.weights, axis=-1), jnp.ones([5, 4])
+    )
+    test_utils.assert_allclose(
+        bijector.inverse(latents), points, rtol=1e-6, atol=1e-6
+    )
+
+  def _set_flat_nuts_env(self, value):
+    if value is not None:
+      self.enter_context(
+          mock.patch.dict(os.environ, {"MERIDIAN_FLAT_NUTS": value})
+      )
+
+  def _patch_samplers(self, reporting: bool):
+    suffix = "_reporting_steps" if reporting else ""
+    flat = self.enter_context(
+        mock.patch.object(
+            backend,
+            f"_jax_xla_flat_windowed_adaptive_nuts{suffix}",
+            autospec=True,
+        )
+    )
+    per_part = self.enter_context(
+        mock.patch.object(
+            backend, f"_jax_xla_windowed_adaptive_nuts{suffix}", autospec=True
+        )
+    )
+    return flat, per_part
+
+  # TODO: Remove with the `MERIDIAN_FLAT_NUTS` opt-out.
+  @parameterized.named_parameters(
+      ("default", None),
+      ("empty", ""),
+      ("true", "true"),
+      ("one", "1"),
+      ("yes_upper", " YES "),
+  )
+  def test_uses_flat_sampler_by_default_or_when_enabled(self, value):
+    self._set_flat_nuts_env(value)
+    flat, per_part = self._patch_samplers(reporting=False)
+    backend.xla_windowed_adaptive_nuts(n_draws=1)
+    flat.assert_called_once_with(n_draws=1)
+    per_part.assert_not_called()
+
+  # TODO: Remove with the `MERIDIAN_FLAT_NUTS` opt-out.
+  @parameterized.named_parameters(
+      ("false", "false"),
+      ("false_upper", " FALSE "),
+      ("zero", "0"),
+      ("no", "no"),
+  )
+  def test_uses_per_part_sampler_when_disabled(self, value):
+    self._set_flat_nuts_env(value)
+    flat, per_part = self._patch_samplers(reporting=False)
+    backend.xla_windowed_adaptive_nuts(n_draws=1)
+    per_part.assert_called_once_with(n_draws=1)
+    flat.assert_not_called()
+
+  # TODO: Remove with the `MERIDIAN_FLAT_NUTS` opt-out.
+  @parameterized.named_parameters(("typo", "flase"), ("off", "off"))
+  def test_rejects_unrecognized_environment_variable(self, value):
+    self._set_flat_nuts_env(value)
+    flat, per_part = self._patch_samplers(reporting=False)
+    with self.assertRaisesRegex(ValueError, "Invalid MERIDIAN_FLAT_NUTS"):
+      backend.xla_windowed_adaptive_nuts(n_draws=1)
+    flat.assert_not_called()
+    per_part.assert_not_called()
+
+  def test_flat_sampler_rejects_custom_trace_fn(self):
+    flat, _ = self._patch_samplers(reporting=False)
+    with self.assertRaisesRegex(ValueError, "custom `trace_fn`"):
+      backend.xla_windowed_adaptive_nuts(
+          n_draws=1, trace_fn=lambda *args: args[0]
+      )
+    flat.assert_not_called()
+
+  # TODO: Remove with the `MERIDIAN_FLAT_NUTS` opt-out.
+  def test_per_part_sampler_accepts_custom_trace_fn(self):
+    self._set_flat_nuts_env("false")
+    _, per_part = self._patch_samplers(reporting=False)
+    trace_fn = lambda *args: args[0]
+    backend.xla_windowed_adaptive_nuts(n_draws=1, trace_fn=trace_fn)
+    per_part.assert_called_once_with(n_draws=1, trace_fn=trace_fn)
+
+  def test_step_callback_uses_flat_reporting_sampler_by_default(self):
+    flat, per_part = self._patch_samplers(reporting=True)
+    backend.xla_windowed_adaptive_nuts(
+        step_callback=lambda n_divergent: None, n_draws=1
+    )
+    flat.assert_called_once_with(mock.ANY, n_draws=1)
+    per_part.assert_not_called()
+
+  # TODO: Remove with the `MERIDIAN_FLAT_NUTS` opt-out.
+  def test_step_callback_uses_per_part_reporting_sampler_when_disabled(self):
+    self._set_flat_nuts_env("false")
+    flat, per_part = self._patch_samplers(reporting=True)
+    backend.xla_windowed_adaptive_nuts(
+        step_callback=lambda n_divergent: None, n_draws=1
+    )
+    per_part.assert_called_once_with(mock.ANY, n_draws=1)
+    flat.assert_not_called()
+
+  # TODO: Remove with the per-part sampler.
+  def test_output_matches_per_part_sampler_structure(self):
+    pinned = self._get_pinned_model()
+    args = dict(
+        joint_dist=pinned,
+        n_chains=3,
+        n_draws=6,
+        num_adaptation_steps=4,
+        max_tree_depth=4,
+        seed=11,
+    )
+    flat_states, flat_trace = backend.xla_windowed_adaptive_nuts(**args)
+    with mock.patch.dict(
+        os.environ, {"MERIDIAN_FLAT_NUTS": "false"}
+    ):
+      states, trace = backend.xla_windowed_adaptive_nuts(**args)
+
+    self.assertEqual(flat_states._fields, states._fields)
+    for name in states._fields:
+      self.assertEqual(
+          getattr(flat_states, name).shape, getattr(states, name).shape
+      )
+    self.assertEqual(set(flat_trace), set(trace))
+    for name in ("step_size", "target_log_prob", "n_steps", "diverging"):
+      self.assertEqual(flat_trace[name].shape, trace[name].shape)
+    self.assertTrue(np.all(np.asarray(flat_states.scale) > 0))
+
+  def test_samples_known_posterior(self):
+    # x ~ Normal(0, 1) (5-dim), y ~ Normal(x, 0.5): the posterior of x is
+    # Normal(0.8 * y, 1 / sqrt(5)).
+    tfd = backend.tfd
+    y = backend.to_tensor(
+        [-1.0, -0.5, 0.0, 0.5, 1.0], dtype=backend.float_dtype
+    )
+    joint_dist = tfd.JointDistributionNamed({
+        "x": tfd.Normal(backend.zeros([5], dtype=backend.float_dtype), 1.0),
+        "y": lambda x: tfd.Normal(x, 0.5),
+    })
+    states, _ = backend.xla_windowed_adaptive_nuts(
+        joint_dist=joint_dist,
+        n_chains=4,
+        n_draws=1000,
+        num_adaptation_steps=300,
+        seed=3,
+        y=y,
+    )
+
+    x = np.asarray(states["x"]).reshape(-1, 5)
+    test_utils.assert_allclose(x.mean(axis=0), 0.8 * np.asarray(y), atol=0.05)
+    test_utils.assert_allclose(x.std(axis=0), 1 / np.sqrt(5), rtol=0.1)
+
+
 if __name__ == "__main__":
   absltest.main()

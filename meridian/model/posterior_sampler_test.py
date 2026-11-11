@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import collections
+import importlib
+import os
 from typing import cast
 from unittest import mock
 import warnings
@@ -2058,6 +2060,73 @@ class PosteriorMCMCSamplerTest(
         step_callback=None,
     )
 
+  def test_flat_nuts_target_matches_windowed_sampling_target(self):
+    if backend.config.get_backend() != backend.config.Backend.JAX:
+      self.skipTest("Flat NUTS is JAX only.")
+    windowed_sampling = importlib.import_module(
+        "tensorflow_probability.substrates.jax.experimental.mcmc."
+        "windowed_sampling"
+    )
+    meridian = model.Meridian(
+        input_data=self.short_input_data_with_media_and_rf,
+        model_spec=spec.ModelSpec(),
+    )
+    joint_dist = meridian.posterior_sampler_callable._get_joint_dist_sampling()
+    target, init, *_ = windowed_sampling._setup_mcmc(  # pylint: disable=protected-access
+        joint_dist, n_chains=[2], seed=backend.random.prng_key(0)
+    )
+    flat_nuts_setup = getattr(backend, "_flat_nuts_setup")
+    setup = flat_nuts_setup(
+        joint_dist, 2, current_state=None, seed=backend.random.prng_key(1)
+    )
+    flat_dist, flat_init = setup.target, setup.initial_state
+    sizes = [part.shape[-1] for part in init]
+    self.assertEqual(tuple(flat_init.shape), (2, sum(sizes)))
+
+    points = (
+        np.random.default_rng(2)
+        .uniform(-2, 2, size=[3, 2, sum(sizes)])
+        .astype(flat_init.dtype)
+    )
+    parts = np.split(points, np.cumsum(sizes)[:-1], axis=-1)
+    test_utils.assert_allclose(
+        flat_dist.unnormalized_log_prob([points]),
+        target(*parts),
+        rtol=1e-6,
+        atol=1e-6,
+    )
+
+  # TODO: Remove with the per-part sampler.
+  def test_sample_posterior_with_flat_nuts_matches_per_part_structure(self):
+    if backend.config.get_backend() != backend.config.Backend.JAX:
+      self.skipTest("Flat NUTS is JAX only.")
+    sample_args = dict(
+        n_chains=2, n_adapt=3, n_burnin=1, n_keep=2, max_tree_depth=3, seed=1
+    )
+    inference_data = {}
+    for flat in ("false", "true"):
+      with mock.patch.dict(
+          os.environ, {"MERIDIAN_FLAT_NUTS": flat}
+      ):
+        meridian = model.Meridian(
+            input_data=self.short_input_data_with_media_and_rf,
+            model_spec=spec.ModelSpec(),
+        )
+        meridian.sample_posterior(**sample_args)
+        inference_data[flat] = meridian.inference_data
+
+    per_part, flat = inference_data["false"], inference_data["true"]
+    for group in (constants.POSTERIOR, "sample_stats", "trace"):
+      expected = getattr(per_part, group)
+      actual = getattr(flat, group)
+      self.assertEqual(set(actual.data_vars), set(expected.data_vars))
+      for name in expected.data_vars:
+        self.assertEqual(actual[name].dims, expected[name].dims, msg=name)
+        self.assertEqual(actual[name].shape, expected[name].shape, msg=name)
+    self.assertTrue(
+        np.all(np.isfinite(flat.posterior[constants.ROI_M].values))  # pyrefly: ignore[missing-attribute]
+    )
+
   def test_sample_posterior_with_none_seed_tf(self):
     if backend.config.get_backend() == backend.config.Backend.JAX:
       self.skipTest("TF specific test for seed=None.")
@@ -2738,15 +2807,21 @@ class PosteriorMCMCSamplerTest(
         progress_callback=snapshots.append, **sampling_kwargs
     )
 
-    # Reporting progress does not change the draws.
+    # Reporting progress does not change the draws beyond floating-point
+    # rounding. The reporting sampler is compiled separately (it keeps the
+    # adaptation draws and calls back to the host), so the compiler may order
+    # floating-point operations differently, and those last-bit differences
+    # can grow slightly over the draws.
     for group in (constants.POSTERIOR, "sample_stats", "trace"):
       expected_group = getattr(expected_meridian.inference_data, group)
       actual_group = getattr(meridian.inference_data, group)
       self.assertCountEqual(actual_group.data_vars, expected_group.data_vars)
       for name in expected_group.data_vars:
-        test_utils.assert_allequal(
+        test_utils.assert_allclose(
             actual_group[name].values,
             expected_group[name].values,
+            rtol=1e-6,
+            atol=1e-8,
             err_msg=f"{group}.{name}",
         )
 

@@ -16,6 +16,7 @@
 
 import abc
 from collections.abc import Callable
+import dataclasses
 import functools
 import itertools
 import os
@@ -48,7 +49,6 @@ _DEFAULT_SEED_DTYPE = "int32"
 _MAX_INT32 = np.iinfo(np.int32).max
 
 if TYPE_CHECKING:
-  import dataclasses
   import jax as _jax
   import tensorflow as _tf
 
@@ -1364,6 +1364,16 @@ if _BACKEND == config.Backend.JAX:
 
     return trace_fn
 
+  def _drop_adaptation_draws(result, num_adaptation_steps):
+    """Drops the adaptation draws from a `windowed_adaptive_nuts` result."""
+    # Only the draws and the trace have the draws along their first axis; the
+    # final kernel results, when requested, do not.
+    drop = lambda x: x[num_adaptation_steps:]
+    return result._replace(
+        all_states=tree_util.tree_map(drop, result.all_states),
+        trace=tree_util.tree_map(drop, result.trace),
+    )
+
   @functools.partial(jax.jit, static_argnames=_NUTS_STATIC_ARGNAMES)
   def _jax_xla_windowed_adaptive_nuts_reporting_steps(
       step_callback_handle, **kwargs
@@ -1393,20 +1403,286 @@ if _BACKEND == config.Backend.JAX:
         discard_tuning=False,
         **kwargs,
     )
-    if not discard_tuning:
-      return result
-    # Only the draws and the trace have the draws along their first axis; the
-    # final kernel results, when requested, do not.
-    drop_adaptation_draws = lambda x: x[num_adaptation_steps:]
-    return result._replace(
-        all_states=tree_util.tree_map(drop_adaptation_draws, result.all_states),
-        trace=tree_util.tree_map(drop_adaptation_draws, result.trace),
+    return result if not discard_tuning else _drop_adaptation_draws(
+        result, num_adaptation_steps
+    )
+
+  class _FlatUnconstrainedTarget(tfp_jax.distributions.Distribution):
+    """A distribution over one flat, unconstrained vector, given its density.
+
+    Only `log_prob` is meaningful. It is the single node of the joint
+    distribution that `_flat_windowed_adaptive_nuts` hands to
+    `windowed_adaptive_nuts` together with an explicit initial state, so it is
+    never actually sampled.
+    """
+
+    def __init__(self, target_log_prob_fn, event_size, dtype):
+      parameters = dict(locals())
+      self._target_log_prob_fn = target_log_prob_fn
+      self._event_size = event_size
+      super().__init__(
+          dtype=dtype,
+          reparameterization_type=tfp_jax.distributions.FULLY_REPARAMETERIZED,
+          validate_args=False,
+          allow_nan_stats=True,
+          parameters=parameters,
+          name="FlatUnconstrainedTarget",
+      )
+
+    def _batch_shape(self):
+      return []
+
+    def _batch_shape_tensor(self):
+      return jax_ops.zeros([0], dtype=jax_ops.int32)
+
+    def _event_shape(self):
+      return [self._event_size]
+
+    def _event_shape_tensor(self):
+      return jax_ops.array([self._event_size], dtype=jax_ops.int32)
+
+    def _log_prob(self, x):
+      return self._target_log_prob_fn(x)
+
+    def _sample_n(self, n, seed=None):
+      # Joint distributions trace `sample` abstractly to infer dtypes and
+      # shapes; the values are never used.
+      del seed
+      return jax_ops.zeros([n, self._event_size], dtype=self.dtype)
+
+    def _default_event_space_bijector(self):
+      return tfp_jax.bijectors.Identity()
+
+  def _flat_unconstraining_bijector(pinned_dist):
+    """Returns a bijector from one flat unconstrained vector to the latents.
+
+    Applies the same per-latent transformation as `windowed_adaptive_nuts`
+    (each latent's default event-space bijector, with its unconstrained value
+    flattened to one dimension), after splitting the vector into the latents.
+
+    Args:
+      pinned_dist: The pinned joint distribution of the latents.
+
+    Returns:
+      A bijector whose `forward` maps a `[..., event_size]` tensor to the
+      structure of `pinned_dist`, where `event_size` is the total number of
+      unconstrained values.
+    """
+    bijectors_lib = tfp_jax.bijectors
+    unconstrain_and_restructure = bijectors_lib.Chain([
+        pinned_dist.experimental_default_event_space_bijector(),
+        bijectors_lib.pack_sequence_as(pinned_dist.event_shape_tensor()),
+    ])
+    unconstrained_shapes = [
+        tuple(int(d) for d in shape)
+        for shape in unconstrain_and_restructure.inverse_event_shape(
+            pinned_dist.event_shape
+        )
+    ]
+    sizes = [
+        int(np.prod(shape, dtype=np.int64)) for shape in unconstrained_shapes
+    ]
+    bijector = bijectors_lib.Chain([
+        unconstrain_and_restructure,
+        bijectors_lib.JointMap([
+            bijectors_lib.Reshape(event_shape_out=shape, event_shape_in=[-1])
+            for shape in unconstrained_shapes
+        ]),
+        bijectors_lib.Split(sizes, axis=-1),
+    ])
+    return bijector
+
+  _WINDOWED_ADAPTIVE_NUTS_KWARGS = frozenset({
+      "n_draws",
+      "joint_dist",
+      "n_chains",
+      "num_adaptation_steps",
+      "current_state",
+      "init_step_size",
+      "dual_averaging_kwargs",
+      "max_tree_depth",
+      "max_energy_diff",
+      "unrolled_leapfrog_steps",
+      "parallel_iterations",
+      "trace_fn",
+      "return_final_kernel_results",
+      "discard_tuning",
+      "chain_axis_names",
+      "seed",
+  })
+
+  def _flat_windowed_adaptive_nuts(**kwargs):
+    """Runs `windowed_adaptive_nuts` on one flat unconstrained state vector.
+
+    `windowed_adaptive_nuts` keeps one state part per latent variable, so the
+    per-step work outside the target density (momentum, kinetic energy, mass
+    matrix and step size updates, U-turn checks) is repeated for every latent.
+    Meridian models have dozens of latents, so on GPU these small per-part
+    operations become hundreds of kernel launches per leapfrog step.
+
+    This wrapper runs the same algorithm with the same unconstrained
+    parameterization, initial state and kernel seed, but on a single state
+    part: the latents' unconstrained values concatenated into one vector. The
+    target density is the latents' log density plus the log-Jacobian of the
+    unconstraining bijector, as in `windowed_adaptive_nuts`. Draws are mapped
+    back to the latent structure before they are returned. Because the
+    momentum is drawn for one part instead of many, the draws are not
+    identical to the per-part sampler, but they come from the same posterior.
+
+    Args:
+      **kwargs: Arguments of `windowed_adaptive_nuts`, plus pins of the joint
+        distribution. Only the default trace function, or one that wraps it,
+        is supported.
+
+    Returns:
+      Same as `windowed_adaptive_nuts`.
+    """
+    joint_dist = kwargs.pop("joint_dist")
+    n_chains = kwargs.pop("n_chains")
+    current_state = kwargs.pop("current_state", None)
+    seed = random.prng_key(kwargs.pop("seed"))
+    pins = {
+        name: kwargs.pop(name)
+        for name in list(kwargs)
+        if name not in _WINDOWED_ADAPTIVE_NUTS_KWARGS
+    }
+    setup = _flat_nuts_setup(
+        joint_dist, n_chains, current_state=current_state, seed=seed, **pins
+    )
+    result = experimental.mcmc.windowed_adaptive_nuts(
+        joint_dist=setup.target,
+        n_chains=n_chains,
+        current_state=[setup.initial_state],
+        seed=seed,
+        **kwargs,
+    )
+    if hasattr(result, "all_states"):
+      return result._replace(
+          all_states=setup.bijector.forward(result.all_states[0])
+      )
+    return setup.bijector.forward(result[0])
+
+  @functools.partial(jax.jit, static_argnames=_NUTS_STATIC_ARGNAMES)
+  def _jax_xla_flat_windowed_adaptive_nuts(**kwargs):
+    """JIT wrapper for the NUTS sampler on one flat state vector."""
+    return _flat_windowed_adaptive_nuts(**kwargs)
+
+  @functools.partial(jax.jit, static_argnames=_NUTS_STATIC_ARGNAMES)
+  def _jax_xla_flat_windowed_adaptive_nuts_reporting_steps(
+      step_callback_handle, **kwargs
+  ):
+    """Flat-state `_jax_xla_windowed_adaptive_nuts_reporting_steps`."""
+    num_adaptation_steps = kwargs.get("num_adaptation_steps", 500)
+    discard_tuning = kwargs.pop("discard_tuning", True)
+    result = _flat_windowed_adaptive_nuts(
+        trace_fn=_jax_nuts_step_reporting_trace_fn(step_callback_handle),
+        discard_tuning=False,
+        **kwargs,
+    )
+    return result if not discard_tuning else _drop_adaptation_draws(
+        result, num_adaptation_steps
+    )
+
+  @dataclasses.dataclass(frozen=True, kw_only=True)
+  class _FlatNutsSetup:
+    """The flat target, initial state and bijector for flat NUTS.
+
+    Attributes:
+      target: A one-part joint distribution whose log density is the
+        parameters' log density in flat unconstrained space.
+      initial_state: The `[n_chains, event_size]` initial state.
+      bijector: The bijector from the flat space to the parameter structure.
+    """
+
+    target: Any
+    initial_state: Any
+    bijector: Any
+
+  def _flat_nuts_setup(
+      joint_dist, n_chains, *, current_state, seed, **pins
+  ) -> _FlatNutsSetup:
+    """Builds the flat target, initial state and bijector for flat NUTS.
+
+    Args:
+      joint_dist: The joint distribution passed to `windowed_adaptive_nuts`.
+      n_chains: Number of chains, as an int or a list of one int.
+      current_state: Optional initial state in the structure of the pinned
+        `joint_dist`. If `None`, it is drawn as `windowed_adaptive_nuts` does.
+      seed: The PRNG key passed to `windowed_adaptive_nuts`.
+      **pins: Values passed to `joint_dist.experimental_pin`.
+
+    Returns:
+      The flat target, initial state and bijector.
+    """
+    n_chains = [n_chains] if isinstance(n_chains, int) else list(n_chains)
+    pinned_dist = joint_dist.experimental_pin(**pins) if pins else joint_dist
+    bijector = _flat_unconstraining_bijector(pinned_dist)
+
+    if current_state is None:
+      # Same initialization and seed as `windowed_adaptive_nuts`: uniform(-2, 2)
+      # in unconstrained space, retried until the density is finite.
+      init_seed, _ = tfp_jax.random.split_seed(
+          tfp_jax.random.sanitize_seed(seed), n=2
+      )
+      current_state = experimental.mcmc.retry_init(
+          experimental.mcmc.init_near_unconstrained_zero(pinned_dist).sample,
+          target_fn=pinned_dist.unnormalized_log_prob,
+          sample_shape=n_chains,
+          seed=init_seed,
+      )
+    flat_init = bijector.inverse(current_state)
+    event_size = int(flat_init.shape[-1])
+
+    def flat_target_log_prob(flat_state):
+      log_prob = pinned_dist.unnormalized_log_prob(bijector.forward(flat_state))
+      return log_prob + bijector.forward_log_det_jacobian(
+          flat_state, event_ndims=1
+      )
+
+    flat_dist = tfp_jax.distributions.JointDistributionSequential([
+        _FlatUnconstrainedTarget(
+            flat_target_log_prob, event_size, flat_init.dtype
+        )
+    ])
+    return _FlatNutsSetup(
+        target=flat_dist, initial_state=flat_init, bijector=bijector
+    )
+
+  # TODO: Remove the `MERIDIAN_FLAT_NUTS` opt-out and the per-part
+  # sampler in the next major version (Meridian 3.0).
+  _FLAT_NUTS_TRUE_VALUES = frozenset({"", "1", "true", "yes"})
+  _FLAT_NUTS_FALSE_VALUES = frozenset({"0", "false", "no"})
+
+  def _flat_nuts_enabled() -> bool:
+    """Whether NUTS runs on one flat state (default) or one part per parameter.
+
+    Returns:
+      `False` if the `MERIDIAN_FLAT_NUTS` environment variable is `0`, `false`
+      or `no` (any case), and `True` if it is unset, empty, `1`, `true` or
+      `yes`.
+
+    Raises:
+      ValueError: If `MERIDIAN_FLAT_NUTS` has any other value.
+    """
+    value = os.environ.get("MERIDIAN_FLAT_NUTS", "").strip().lower()
+    if value in _FLAT_NUTS_TRUE_VALUES:
+      return True
+    if value in _FLAT_NUTS_FALSE_VALUES:
+      return False
+    raise ValueError(
+        f"Invalid MERIDIAN_FLAT_NUTS value {value!r}. Use 'true' (the"
+        " default) or 'false'."
     )
 
   def xla_windowed_adaptive_nuts(
       *, step_callback: Optional[Callable[[int], None]] = None, **kwargs
   ):
     """Runs `tfp.experimental.mcmc.windowed_adaptive_nuts` compiled with XLA.
+
+    By default, all unconstrained parameters are packed into one flat state
+    vector, which samples from the same posterior with fewer GPU operations per
+    step. To use one state part per parameter instead, set the
+    `MERIDIAN_FLAT_NUTS` environment variable to `false`.
 
     Args:
       step_callback: Optional callable invoked on the host after every MCMC
@@ -1424,9 +1700,27 @@ if _BACKEND == config.Backend.JAX:
       returns it.
 
     Raises:
-      ValueError: If both `step_callback` and `trace_fn` are given.
+      ValueError: If both `step_callback` and `trace_fn` are given, if a custom
+        `trace_fn` is given while the flat state is in use, or if
+        `MERIDIAN_FLAT_NUTS` has an unrecognized value.
     """
+    flat = _flat_nuts_enabled()
+    trace_fn = kwargs.get("trace_fn")
+    if (
+        flat
+        and step_callback is None
+        and trace_fn is not None
+        and trace_fn is not experimental.mcmc.default_nuts_trace_fn
+    ):
+      raise ValueError(
+          "A custom `trace_fn` receives the sampler state, which is one flat"
+          " vector by default. To use a custom `trace_fn`, set the"
+          " `MERIDIAN_FLAT_NUTS` environment variable to `false`."
+      )
     if step_callback is None:
+      if flat:
+        return _jax_xla_flat_windowed_adaptive_nuts(**kwargs)
+      # TODO: Delete this per-part fallback in Meridian 3.0.
       return _jax_xla_windowed_adaptive_nuts(**kwargs)
     if "trace_fn" in kwargs:
       raise ValueError(
@@ -1436,7 +1730,12 @@ if _BACKEND == config.Backend.JAX:
     handle = next(_nuts_step_callback_handles)
     _nuts_step_callbacks[handle] = step_callback
     try:
-      result = _jax_xla_windowed_adaptive_nuts_reporting_steps(handle, **kwargs)
+      reporting_sampler = (
+          _jax_xla_flat_windowed_adaptive_nuts_reporting_steps
+          if flat
+          else _jax_xla_windowed_adaptive_nuts_reporting_steps
+      )
+      result = reporting_sampler(handle, **kwargs)
       # Wait for the run and for its pending step callbacks, so that every
       # step has been reported by the time the sampler returns.
       result = jax.block_until_ready(result)

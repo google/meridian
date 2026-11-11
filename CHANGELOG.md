@@ -23,6 +23,14 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   On the JAX backend, `sample_posterior` now runs the No-U-Turn Sampler
+    (NUTS) on one flat vector of all unconstrained parameters instead of one
+    state part per parameter. It samples from the same posterior with fewer
+    GPU operations per leapfrog step, which reduces GPU sampling time by about
+    30% on typical models. Posterior draws for a given seed differ from
+    earlier versions. To use the previous sampler, set the
+    `MERIDIAN_FLAT_NUTS` environment variable to `false`. The previous sampler
+    and this variable will be removed in the next major version.
 *   Fix `WeeklyOptimizationGrid.to_optimization_grid` prematurely rounding
     historical channel spend before multiplying by the grid's edge spend
     multipliers when validating optimization bounds, which could falsely reject
