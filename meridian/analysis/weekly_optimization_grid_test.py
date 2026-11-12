@@ -1236,7 +1236,7 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
     ):
       grid = weekly_grid.to_optimization_grid(
           budget=1_403_360.0,
-          spend_constraint_upper=[0.3, 0.3, 0.538, 0.3],
+          spend_constraint_upper=[0.3, 0.3, 0.535, 0.3],
       )
 
     self.assertIsNone(grid)
@@ -1266,6 +1266,26 @@ class WeeklyOptimizationGridTest(parameterized.TestCase):
       )
 
     self.assertIsNone(grid)
+
+  def test_validate_optimization_bounds_accepts_small_channel_at_max_budget(
+      self,
+  ):
+    # At budget=1,500,000 (round_factor=-3), ch_3 has historical spend 500 and
+    # budget-scaled spend 1,500, so its upper bound is round(1.3 * 1,500, -3) =
+    # 2,000, within the grid edge round(4.29 * 500, -3) = 2,000.
+    weekly_grid = self._create_two_week_grid(
+        [300_000.0, 120_000.0, 79_500.0, 500.0]
+    )
+
+    grid = weekly_grid.to_optimization_grid(
+        budget=1_500_000.0,
+        spend_constraint_upper=0.3,
+    )
+
+    self.assertIsNotNone(grid)
+    self.assertEqual(
+        np.nanmax(grid.spend_grid.sel({c.CHANNEL: 'ch_3'}).values), 2_000.0
+    )
 
   def test_validate_optimization_bounds_skips_channel_with_zero_spend(
       self,

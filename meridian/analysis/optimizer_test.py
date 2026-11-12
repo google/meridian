@@ -1732,12 +1732,24 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
     )
     np.testing.assert_array_equal(
         lower_bound,
-        np.array([5300, 13300, 23300, 35500, 50000]),
+        np.array([5300, 13300, 23300, 35600, 50000]),
     )
     np.testing.assert_array_equal(
         upper_bound,
-        np.array([13300, 31100, 50000, 71000, 94500]),
+        np.array([13300, 31100, 50000, 71100, 94400]),
     )
+
+  def test_get_optimization_bounds_rounds_scaled_spend(self):
+    # Bounds are round(1.3 * 1500) and round(0.7 * 1500) to the nearest 1000.
+    lower_bound, upper_bound = optimizer.get_optimization_bounds(
+        n_channels=1,
+        spend=np.array([1500.0]),
+        round_factor=-3,
+        spend_constraint_lower=0.3,
+        spend_constraint_upper=0.3,
+    )
+    np.testing.assert_array_equal(lower_bound, np.array([1000]))
+    np.testing.assert_array_equal(upper_bound, np.array([2000]))
 
   def test_optimization_grid_media_and_rf_correct(self):
     self.enter_context(
@@ -2401,9 +2413,9 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'spend_constraint_upper': None,
           'error_details': (
               'Lower bound 0 for channel ch_0 is below the mimimum spend of the'
-              ' grid 31.0.\nUpper bound 573 for channel rf_ch_0 is above the'
-              ' maximum spend of the grid 549.0.\nUpper bound 766 for channel'
-              ' rf_ch_1 is above the maximum spend of the grid 583.0.'
+              ' grid 31.0.\nUpper bound 574 for channel rf_ch_0 is above the'
+              ' maximum spend of the grid 548.0.\nUpper bound 765 for channel'
+              ' rf_ch_1 is above the maximum spend of the grid 584.0.'
           ),
       },
       {
@@ -2415,7 +2427,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'error_details': (
               'Lower bound 0 for channel ch_0 is below the mimimum spend of the'
               ' grid 31.0.\nUpper bound 624 for channel ch_0 is above the'
-              ' maximum spend of the grid 593.0.'
+              ' maximum spend of the grid 592.0.'
           ),
       },
       {
@@ -2426,12 +2438,12 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
           'spend_constraint_upper': None,
           'error_details': (
               'Upper bound 27544 for channel ch_0 is above the maximum spend of'
-              ' the grid 593.0.\nUpper bound 25822 for channel ch_1 is above'
+              ' the grid 592.0.\nUpper bound 25822 for channel ch_1 is above'
               ' the maximum spend of the grid 555.0.\nUpper bound 23967 for'
               ' channel ch_2 is above the maximum spend of the grid'
               ' 515.0.\nUpper bound 25502 for channel rf_ch_0 is above the'
-              ' maximum spend of the grid 549.0.\nUpper bound 27166 for channel'
-              ' rf_ch_1 is above the maximum spend of the grid 583.0.'
+              ' maximum spend of the grid 548.0.\nUpper bound 27166 for channel'
+              ' rf_ch_1 is above the maximum spend of the grid 584.0.'
           ),
       },
       {
@@ -2468,13 +2480,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
               ' channel rf_ch_0 is below the mimimum spend of the grid'
               ' 29.0.\nLower bound 0 for channel rf_ch_1 is below the mimimum'
               ' spend of the grid 31.0.\nUpper bound 624 for channel ch_0 is'
-              ' above the maximum spend of the grid 593.0.\nUpper bound 584 for'
+              ' above the maximum spend of the grid 592.0.\nUpper bound 585 for'
               ' channel ch_1 is above the maximum spend of the grid'
-              ' 555.0.\nUpper bound 542 for channel ch_2 is above the maximum'
-              ' spend of the grid 515.0.\nUpper bound 578 for channel rf_ch_0'
-              ' is above the maximum spend of the grid 549.0.\nUpper bound 614'
+              ' 555.0.\nUpper bound 543 for channel ch_2 is above the maximum'
+              ' spend of the grid 515.0.\nUpper bound 577 for channel rf_ch_0'
+              ' is above the maximum spend of the grid 548.0.\nUpper bound 615'
               ' for channel rf_ch_1 is above the maximum spend of the grid'
-              ' 583.0.'
+              ' 584.0.'
           ),
       },
       {
@@ -2495,13 +2507,13 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
               ' channel rf_ch_0 is below the mimimum spend of the grid'
               ' 29.0.\nLower bound 0 for channel rf_ch_1 is below the mimimum'
               ' spend of the grid 31.0.\nUpper bound 624 for channel ch_0 is'
-              ' above the maximum spend of the grid 593.0.\nUpper bound 584 for'
+              ' above the maximum spend of the grid 592.0.\nUpper bound 585 for'
               ' channel ch_1 is above the maximum spend of the grid'
-              ' 555.0.\nUpper bound 542 for channel ch_2 is above the maximum'
-              ' spend of the grid 515.0.\nUpper bound 578 for channel rf_ch_0'
-              ' is above the maximum spend of the grid 549.0.\nUpper bound 614'
+              ' 555.0.\nUpper bound 543 for channel ch_2 is above the maximum'
+              ' spend of the grid 515.0.\nUpper bound 577 for channel rf_ch_0'
+              ' is above the maximum spend of the grid 548.0.\nUpper bound 615'
               ' for channel rf_ch_1 is above the maximum spend of the grid'
-              ' 583.0.'
+              ' 584.0.'
           ),
       },
   )
@@ -3245,7 +3257,7 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
             )
         )
     )
-    expected_optimal_spend = np.array([624, 584, 542, 578, 614])
+    expected_optimal_spend = np.array([624, 585, 543, 577, 615])
 
     np.testing.assert_array_equal(spend.optimized, expected_optimal_spend)
 

@@ -35,6 +35,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     (`tau_g_excl_baseline`, `eta_m`, `eta_rf`, `eta_om`, `eta_orf`, `xi_c`, or
     `xi_n`) is a batched `Deterministic` distribution with one value per
     channel or geo.
+*   Fix `get_optimization_bounds` rounding channel spend before applying spend
+    constraints. Bounds are now rounded once after scaling, so they no longer
+    exceed `WeeklyOptimizationGrid` coverage for channels whose spend is close
+    to the rounding step. Optimization bounds and optimized spend can shift by
+    one rounding step compared with earlier versions.
 *   Fix `WeeklyOptimizationGrid.to_optimization_grid` prematurely rounding
     historical channel spend before multiplying by the grid's edge spend
     multipliers when validating optimization bounds, which could falsely reject
