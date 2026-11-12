@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `model.load_mmm()` now raises a `ValueError` directing users to
+    `meridian.schema.serde.meridian_serde.load_meridian()` when given a
+    protobuf file (`.binpb`, `.txtpb`, or `.textproto`, case-insensitive) or a
+    file that cannot be unpickled, instead of failing with an unpickling error
+    such as `KeyError: 10`.
 *   On the JAX backend, `sample_posterior` now runs the No-U-Turn Sampler
     (NUTS) on one flat vector of all unconstrained parameters instead of one
     state part per parameter. It samples from the same posterior with fewer
