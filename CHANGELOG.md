@@ -40,6 +40,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     legend entry) in `MediaSummary.plot_channel_contribution_bump_chart` and
     break ranking ties by total incremental outcome across the plotted time
     periods.
+*   Fix `IndependentMultivariateDistribution` sampling every component with the
+    same seed, which made per-channel prior draws perfectly correlated when the
+    seed was stateless (always on JAX, and on TensorFlow with an integer seed).
+    Each component now gets its own seed. For a fixed seed, the prior draws of
+    an `IndependentMultivariateDistribution` differ from earlier versions.
 
 ## [2.2.0] - 2026-11-05
 

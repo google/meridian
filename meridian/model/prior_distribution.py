@@ -1277,8 +1277,19 @@ class IndependentMultivariateDistribution(backend.tfd.Distribution):
     }
 
   def _sample_n(self, n, seed=None):
+    if seed is None:
+      # Without a seed, each component samples statefully and independently.
+      seeds = [None] * len(self._distributions)
+    else:
+      # Give each component its own seed. Reusing one stateless seed would make
+      # the component draws perfectly correlated.
+      seeds = backend.random.split_seed(seed, n=len(self._distributions))
     return backend.concatenate(
-        [dist.sample(n, seed) for dist in self._distributions], axis=-1
+        [
+            dist.sample(n, component_seed)
+            for dist, component_seed in zip(self._distributions, seeds)
+        ],
+        axis=-1,
     )
 
   def _quantile(self, value):

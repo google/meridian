@@ -1275,6 +1275,19 @@ if _BACKEND == config.Backend.JAX:
     def sanitize_seed(seed):
       return tfp_jax.random.sanitize_seed(seed)
 
+    @staticmethod
+    def split_seed(seed: Any, n: int = 2) -> Any:
+      """Splits a TFP-style seed into `n` independent seeds.
+
+      Args:
+        seed: A JAX PRNG key.
+        n: The number of seeds to return.
+
+      Returns:
+        An array of `n` seeds, indexable along the first axis.
+      """
+      return tfp_jax.random.split_seed(seed, n=n)
+
   random = _JaxRandom()
 
   # Arguments of the NUTS sampler that configure the compiled computation and
@@ -2012,6 +2025,21 @@ elif _BACKEND == config.Backend.TENSORFLOW:
     @staticmethod
     def sanitize_seed(seed):
       return tfp.random.sanitize_seed(seed)
+
+    @staticmethod
+    def split_seed(seed: Any, n: int = 2) -> Any:
+      """Splits a TFP-style seed into `n` independent seeds.
+
+      Args:
+        seed: A stateless seed (a pair of integers or an `int32[2]` Tensor), or
+          a Python `int`. An `int` seed is first converted to a stateless seed
+          with stateful sampling, as `tfp.random.sanitize_seed` does.
+        n: The number of seeds to return.
+
+      Returns:
+        A list of `n` stateless seeds.
+      """
+      return tfp.random.split_seed(seed, n=n)
 
   random = _TfRandom()
 

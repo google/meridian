@@ -2433,6 +2433,42 @@ class RNGHandlerTest(BackendTest):
       self.assertFalse(np.array_equal(seq1[0], seq1[1]))
       self.assertFalse(np.array_equal(seq1[1], seq1[2]))
 
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_random_split_seed_is_deterministic(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    seed = backend.RNGHandler(42).get_next_seed()
+
+    seeds1 = backend.random.split_seed(seed, n=3)
+    seeds2 = backend.random.split_seed(seed, n=3)
+
+    self.assertLen(seeds1, 3)
+    for s1, s2 in zip(seeds1, seeds2):
+      test_utils.assert_allequal(
+          backend.get_seed_data(s1), backend.get_seed_data(s2)
+      )
+
+  @parameterized.named_parameters(("tensorflow", _TF), ("jax", _JAX))
+  def test_random_split_seed_returns_distinct_seeds(self, backend_name):
+    self._set_backend_for_test(backend_name)
+    seed = backend.RNGHandler(42).get_next_seed()
+
+    seeds = backend.random.split_seed(seed, n=3)
+
+    seed_data = [backend.get_seed_data(s) for s in seeds]
+    seed_data.append(backend.get_seed_data(seed))
+    unique_seeds = {tuple(np.asarray(s).ravel()) for s in seed_data}
+    self.assertLen(unique_seeds, 4)
+
+  def test_tf_random_split_seed_accepts_int_seed(self):
+    self._set_backend_for_test(_TF)
+
+    seeds = backend.random.split_seed(42, n=2)
+
+    self.assertLen(seeds, 2)
+    for s in seeds:
+      self.assertEqual(np.asarray(s).shape, (2,))
+    self.assertFalse(np.array_equal(seeds[0], seeds[1]))
+
 
 class JitCompatibilityTest(BackendTest):
   """Ensures core backend functions operate correctly under JIT compilation."""

@@ -2558,6 +2558,32 @@ class TestIndependentMultivariateDistribution(test_utils.MeridianTestCase):
     variance = distribution.variance()
     np.testing.assert_allclose(variance, expected_variance, rtol=1e-5)
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='identical_components',
+          loc_scale_pairs=((0.2, 0.9), (0.2, 0.9)),
+      ),
+      dict(
+          testcase_name='different_components',
+          loc_scale_pairs=((0.2, 0.9), (1.0, 0.5)),
+      ),
+  )
+  def test_sample_components_are_independent(self, loc_scale_pairs):
+    distribution = prior_distribution.IndependentMultivariateDistribution([
+        backend.tfd.LogNormal(
+            backend.np_float_dtype(loc), backend.np_float_dtype(scale)
+        )
+        for loc, scale in loc_scale_pairs
+    ])
+    # Use a stateless seed from `RNGHandler`, as the prior sampler does.
+    seed = backend.RNGHandler(42).get_next_seed()
+
+    draws = np.asarray(distribution.sample(1000, seed=seed))
+
+    log_draws = np.log(draws)
+    corr = np.corrcoef(log_draws[:, 0], log_draws[:, 1])[0, 1]
+    self.assertLess(abs(corr), 0.2)
+
 
 class TestLognormalDistFromMeanStd(test_utils.MeridianTestCase):
 
