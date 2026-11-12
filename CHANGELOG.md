@@ -45,6 +45,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     seed was stateless (always on JAX, and on TensorFlow with an integer seed).
     Each component now gets its own seed. For a fixed seed, the prior draws of
     an `IndependentMultivariateDistribution` differ from earlier versions.
+*   Rename channel calibration recommendation criterion labels from `Driver` /
+    `Non-Driver` to `Contributor` / `Non-Contributor` in the Model Health
+    report. `meridian.analysis.review.constants.DRIVER` and `NON_DRIVER` are
+    renamed to `CONTRIBUTOR` and `NON_CONTRIBUTOR`.
 
 ## [2.2.0] - 2026-11-05
 
