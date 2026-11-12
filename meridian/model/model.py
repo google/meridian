@@ -20,6 +20,7 @@ import dataclasses
 import enum
 import functools
 import os
+import pickle
 import warnings
 
 import arviz as az
@@ -1491,6 +1492,8 @@ def load_mmm(file_path: str) -> Meridian:
 
   Raises:
       FileNotFoundError: If `file_path` does not exist.
+      ValueError: If `file_path` is a protobuf file (`.binpb`, `.txtpb`, or
+        `.textproto`) or cannot be unpickled.
   """
   warnings.warn(
       "load_mmm is deprecated and will be removed in a future release. Please"
@@ -1501,9 +1504,22 @@ def load_mmm(file_path: str) -> Meridian:
       stacklevel=2,
   )
 
+  if str(file_path).lower().endswith((".binpb", ".txtpb", ".textproto")):
+    raise ValueError(
+        f"`load_mmm` only supports pickled files, got '{file_path}'. Please use"
+        " `meridian.schema.serde.meridian_serde.load_meridian()` to load"
+        " protobuf files."
+    )
+
   try:
     with open(file_path, "rb") as f:
       mmm = joblib.load(f)
     return mmm
   except FileNotFoundError:
     raise FileNotFoundError(f"No such file or directory: {file_path}") from None
+  except (pickle.UnpicklingError, KeyError, EOFError) as e:
+    raise ValueError(
+        f"Failed to unpickle model from '{file_path}'. If the model was saved"
+        " using `meridian_serde.save_meridian()`, please load it with"
+        " `meridian.schema.serde.meridian_serde.load_meridian()` instead."
+    ) from e

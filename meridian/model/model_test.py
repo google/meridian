@@ -1220,6 +1220,33 @@ class ModelPersistenceTest(
     ):
       model.load_mmm("this/path/does/not/exist")
 
+  @parameterized.named_parameters(
+      dict(testcase_name="binpb", extension=".binpb"),
+      dict(testcase_name="binpb_uppercase", extension=".BINPB"),
+      dict(testcase_name="txtpb", extension=".txtpb"),
+      dict(testcase_name="textproto", extension=".textproto"),
+  )
+  def test_load_mmm_proto_extension_raises_value_error(self, extension: str):
+    proto_path = f"{self.file_path}{extension}"
+    with self.assertRaisesRegex(ValueError, "load_meridian"):
+      model.load_mmm(proto_path)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="binary_proto_wire_tag_10",
+          payload=b"\x0a\x05hello",
+      ),
+      dict(
+          testcase_name="non_pickle_text_bytes",
+          payload=b"not a valid pickle payload",
+      ),
+  )
+  def test_load_mmm_unpicklable_file_raises_value_error(self, payload: bytes):
+    with open(self.file_path, "wb") as f:
+      f.write(payload)
+    with self.assertRaisesRegex(ValueError, "load_meridian"):
+      model.load_mmm(self.file_path)
+
   def test_save_and_load_warning(self):
     mmm = model.Meridian(input_data=self.input_data_with_media_and_rf)
     with self.assertWarns(DeprecationWarning):
