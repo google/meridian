@@ -1578,6 +1578,208 @@ class PriorDistributionTest(test_utils.MeridianTestCase):
     # Validate sigma -- should be a scalar batch since n_geos is 1 for national.
     self.assertEqual(broadcast_distribution.sigma.batch_shape, ())
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='all_zero',
+          eta_m_loc=[0.0] * _N_MEDIA_CHANNELS,
+          number_of_warnings=0,
+      ),
+      dict(
+          testcase_name='some_nonzero',
+          eta_m_loc=[0.0] * (_N_MEDIA_CHANNELS - 1) + [1.0],
+          number_of_warnings=1,
+      ),
+  )
+  def test_broadcast_national_batched_deterministic_eta_m(
+      self, eta_m_loc: list[float], number_of_warnings: int
+  ):
+    # A per-channel (batched) Deterministic prior on a hierarchical parameter
+    # passes the custom prior length check, so `broadcast` must handle it for
+    # national models.
+    distribution = prior_distribution.PriorDistribution(
+        eta_m=backend.tfd.Deterministic(
+            np.array(eta_m_loc, dtype=backend.np_float_dtype), name=c.ETA_M
+        ),
+    )
+
+    with warnings.catch_warnings(record=True) as warns:
+      warnings.simplefilter('always')
+      broadcast_distribution = distribution.broadcast(
+          n_geos=_N_GEOS_NATIONAL,
+          n_media_channels=_N_MEDIA_CHANNELS,
+          n_rf_channels=_N_RF_CHANNELS,
+          n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+          n_controls=_N_CONTROLS,
+          n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+          unique_sigma_for_each_geo=True,
+          n_knots=_N_KNOTS,
+          is_national=True,
+          set_total_media_contribution_prior=False,
+          kpi=1.0,
+          total_spend=np.array([]),
+      )
+    eta_m_warns = [w for w in warns if c.ETA_M in str(w.message)]
+    self.assertLen(eta_m_warns, number_of_warnings)
+
+    self.assertIsInstance(
+        broadcast_distribution.eta_m.parameters[c.DISTRIBUTION],
+        backend.tfd.Deterministic,
+    )
+    self.assertEqual(
+        broadcast_distribution.eta_m.batch_shape, (_N_MEDIA_CHANNELS,)
+    )
+    test_utils.assert_allequal(
+        broadcast_distribution.eta_m.mean(), np.zeros(_N_MEDIA_CHANNELS)
+    )
+
+  def _broadcast_national_and_record_warnings(
+      self,
+      distribution: prior_distribution.PriorDistribution,
+      **broadcast_kwargs: Any,
+  ) -> tuple[prior_distribution.PriorDistribution, list[Any]]:
+    kwargs = dict(
+        n_geos=_N_GEOS_NATIONAL,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        n_controls=_N_CONTROLS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        unique_sigma_for_each_geo=True,
+        n_knots=_N_KNOTS,
+        is_national=True,
+        set_total_media_contribution_prior=False,
+        kpi=1.0,
+        total_spend=np.array([]),
+    )
+    kwargs.update(broadcast_kwargs)
+    with warnings.catch_warnings(record=True) as warns:
+      warnings.simplefilter('always')
+      broadcast_distribution = distribution.broadcast(**kwargs)
+    return broadcast_distribution, warns
+
+  @parameterized.product(
+      (
+          dict(
+              param_name=c.ETA_RF,
+              n_channels_arg='n_rf_channels',
+              n_channels=_N_RF_CHANNELS,
+          ),
+          dict(
+              param_name=c.ETA_OM,
+              n_channels_arg='n_organic_media_channels',
+              n_channels=_N_ORGANIC_MEDIA_CHANNELS,
+          ),
+          # `_N_ORGANIC_RF_CHANNELS` is 1, which doesn't cover mixed zero and
+          # nonzero channels.
+          dict(
+              param_name=c.ETA_ORF,
+              n_channels_arg='n_organic_rf_channels',
+              n_channels=2,
+          ),
+          dict(
+              param_name=c.XI_C,
+              n_channels_arg='n_controls',
+              n_channels=_N_CONTROLS,
+          ),
+          dict(
+              param_name=c.XI_N,
+              n_channels_arg='n_non_media_channels',
+              n_channels=_N_NON_MEDIA_CHANNELS,
+          ),
+      ),
+      (
+          dict(last_channel_loc=0.0, number_of_warnings=0),
+          dict(last_channel_loc=1.0, number_of_warnings=1),
+      ),
+  )
+  def test_broadcast_national_batched_deterministic(
+      self,
+      param_name: str,
+      n_channels_arg: str,
+      n_channels: int,
+      last_channel_loc: float,
+      number_of_warnings: int,
+  ):
+    loc = np.zeros(n_channels, dtype=backend.np_float_dtype)
+    loc[-1] = last_channel_loc
+    distribution = prior_distribution.PriorDistribution(
+        **{param_name: backend.tfd.Deterministic(loc, name=param_name)}
+    )
+
+    broadcast_distribution, warns = (
+        self._broadcast_national_and_record_warnings(
+            distribution, **{n_channels_arg: n_channels}
+        )
+    )
+
+    param_warns = [
+        w
+        for w in warns
+        if f'{param_name} has been automatically set' in str(w.message)
+    ]
+    self.assertLen(param_warns, number_of_warnings)
+    broadcast_param = getattr(broadcast_distribution, param_name)
+    self.assertIsInstance(
+        broadcast_param.parameters[c.DISTRIBUTION], backend.tfd.Deterministic
+    )
+    self.assertEqual(broadcast_param.batch_shape, (n_channels,))
+    test_utils.assert_allequal(broadcast_param.mean(), np.zeros(n_channels))
+
+  def test_broadcast_national_batched_deterministic_tau_g_excl_baseline(self):
+    # A national model has `n_geos - 1 = 0` non-baseline geos.
+    distribution = prior_distribution.PriorDistribution(
+        tau_g_excl_baseline=backend.tfd.Deterministic(
+            np.zeros(_N_GEOS_NATIONAL - 1, dtype=backend.np_float_dtype),
+            name=c.TAU_G_EXCL_BASELINE,
+        ),
+    )
+
+    broadcast_distribution, warns = (
+        self._broadcast_national_and_record_warnings(distribution)
+    )
+
+    tau_g_warns = [w for w in warns if c.TAU_G_EXCL_BASELINE in str(w.message)]
+    self.assertEmpty(tau_g_warns)
+    self.assertIsInstance(
+        broadcast_distribution.tau_g_excl_baseline.parameters[c.DISTRIBUTION],
+        backend.tfd.Deterministic,
+    )
+    self.assertEqual(
+        broadcast_distribution.tau_g_excl_baseline.batch_shape,
+        (_N_GEOS_NATIONAL - 1,),
+    )
+
+  def test_broadcast_national_batched_non_deterministic_eta_m(self):
+    distribution = prior_distribution.PriorDistribution(
+        eta_m=backend.tfd.HalfNormal(
+            np.ones(_N_MEDIA_CHANNELS, dtype=backend.np_float_dtype),
+            name=c.ETA_M,
+        ),
+    )
+
+    broadcast_distribution, warns = (
+        self._broadcast_national_and_record_warnings(distribution)
+    )
+
+    eta_m_warns = [
+        w
+        for w in warns
+        if f'{c.ETA_M} has been automatically set' in str(w.message)
+    ]
+    self.assertLen(eta_m_warns, 1)
+    self.assertIsInstance(
+        broadcast_distribution.eta_m.parameters[c.DISTRIBUTION],
+        backend.tfd.Deterministic,
+    )
+    self.assertEqual(
+        broadcast_distribution.eta_m.batch_shape, (_N_MEDIA_CHANNELS,)
+    )
+    test_utils.assert_allequal(
+        broadcast_distribution.eta_m.mean(), np.zeros(_N_MEDIA_CHANNELS)
+    )
+
   def test_correct_total_media_contribution_roi_prior_distribution(
       self,
   ):

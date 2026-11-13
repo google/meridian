@@ -31,6 +31,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     earlier versions. To use the previous sampler, set the
     `MERIDIAN_FLAT_NUTS` environment variable to `false`. The previous sampler
     and this variable will be removed in the next major version.
+*   Fix a `ValueError` in national models when a hierarchical prior
+    (`tau_g_excl_baseline`, `eta_m`, `eta_rf`, `eta_om`, `eta_orf`, `xi_c`, or
+    `xi_n`) is a batched `Deterministic` distribution with one value per
+    channel or geo.
 *   Fix `WeeklyOptimizationGrid.to_optimization_grid` prematurely rounding
     historical channel spend before multiplying by the grid's edge spend
     multipliers when validating optimization bounds, which could falsely reject

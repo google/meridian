@@ -1556,18 +1556,21 @@ def _convert_to_deterministic_0_distribution(
 
   Args:
     distribution: `tfp.distributions.Distribution` object to be converted to
-      `Deterministic(0)` distribution.
+      `Deterministic(0)` distribution. It can be scalar or batched (for example,
+      one prior per channel).
 
   Returns:
-    `tfp.distribution.Deterministic(0, distribution.name)`
+    `distribution` unchanged if it is a `Deterministic` distribution whose `loc`
+    is zero for every batch member. Otherwise, a scalar
+    `tfp.distribution.Deterministic(0, distribution.name)`.
 
   Raises:
     Warning: If the argument distribution is not a `Deterministic(0)`
-    distribution.
+    distribution, or if any batch member of a batched `Deterministic`
+    distribution has a nonzero `loc`.
   """
-  if (
-      not isinstance(distribution, backend.tfd.Deterministic)
-      or distribution.loc != 0
+  if not isinstance(distribution, backend.tfd.Deterministic) or bool(
+      backend.reduce_any(distribution.loc != 0)
   ):
     warnings.warn(
         'Hierarchical distribution parameters must be deterministically zero'
