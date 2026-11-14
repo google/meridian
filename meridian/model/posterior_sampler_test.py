@@ -2127,6 +2127,153 @@ class PosteriorMCMCSamplerTest(
         np.all(np.isfinite(flat.posterior[constants.ROI_M].values))  # pyrefly: ignore[missing-attribute]
     )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="national_one_media",
+          n_geos=1,
+          n_media_channels=1,
+          n_controls=2,
+          knots=1,
+      ),
+      dict(
+          testcase_name="geo_one_media",
+          n_geos=3,
+          n_media_channels=1,
+          n_controls=2,
+          knots=[0, 10],
+      ),
+      dict(
+          testcase_name="national_one_control",
+          n_geos=1,
+          n_media_channels=2,
+          n_controls=1,
+          knots=[0, 10],
+      ),
+      dict(
+          testcase_name="geo_two_geos_no_controls",
+          n_geos=2,
+          n_media_channels=2,
+          n_controls=None,
+          knots=1,
+      ),
+      dict(
+          testcase_name="national_rf_only_one",
+          n_geos=1,
+          n_media_channels=None,
+          n_rf_channels=1,
+          n_controls=2,
+          knots=1,
+      ),
+      dict(
+          testcase_name="geo_rf_two_one_control",
+          n_geos=3,
+          n_media_channels=2,
+          n_rf_channels=2,
+          n_controls=1,
+          knots=[0, 10],
+      ),
+      dict(
+          testcase_name="geo_organic_media_one",
+          n_geos=2,
+          n_media_channels=2,
+          n_organic_media_channels=1,
+          n_controls=2,
+          knots=1,
+      ),
+      dict(
+          testcase_name="national_organic_rf_one",
+          n_geos=1,
+          n_media_channels=2,
+          n_organic_rf_channels=1,
+          n_controls=2,
+          knots=1,
+      ),
+      dict(
+          testcase_name="national_non_media_one",
+          n_geos=1,
+          n_media_channels=2,
+          n_non_media_channels=1,
+          n_controls=2,
+          knots=1,
+      ),
+      dict(
+          testcase_name="geo_optional_groups_two",
+          n_geos=3,
+          n_media_channels=2,
+          n_rf_channels=2,
+          n_organic_media_channels=2,
+          n_organic_rf_channels=2,
+          n_non_media_channels=2,
+          n_controls=2,
+          knots=[0, 10],
+          unique_sigma_for_each_geo=True,
+          n_chains=2,
+      ),
+  )
+  def test_sample_posterior_compiles_across_model_structures(
+      self,
+      *,
+      n_geos: int,
+      n_media_channels: int | None = None,
+      n_rf_channels: int | None = None,
+      n_organic_media_channels: int | None = None,
+      n_organic_rf_channels: int | None = None,
+      n_non_media_channels: int | None = None,
+      n_controls: int | None = None,
+      knots: int | list[int] | None = None,
+      unique_sigma_for_each_geo: bool = False,
+      n_chains: int = 1,
+  ):
+    if backend.config.get_backend() != backend.config.Backend.JAX:
+      self.skipTest("Tests JAX flat NUTS compilation across model structures.")
+
+    data = data_test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=n_geos,
+        n_times=20,
+        n_media_times=23,
+        n_controls=n_controls,
+        n_non_media_channels=n_non_media_channels,
+        n_media_channels=n_media_channels,
+        n_rf_channels=n_rf_channels,
+        n_organic_media_channels=n_organic_media_channels,
+        n_organic_rf_channels=n_organic_rf_channels,
+        seed=0,
+    )
+    meridian = model.Meridian(
+        input_data=data,
+        model_spec=spec.ModelSpec(
+            knots=knots,
+            unique_sigma_for_each_geo=unique_sigma_for_each_geo,
+        ),
+    )
+    n_keep = 2
+    meridian.sample_posterior(
+        n_chains=n_chains,
+        n_adapt=1,
+        n_burnin=1,
+        n_keep=n_keep,
+        max_tree_depth=2,
+        seed=1,
+    )
+
+    posterior = getattr(meridian.inference_data, constants.POSTERIOR)
+    expected_sigma_shape = (
+        (n_chains, n_keep, n_geos)
+        if (n_geos > 1 and unique_sigma_for_each_geo)
+        else (n_chains, n_keep)
+    )
+    self.assertEqual(posterior[constants.SIGMA].shape, expected_sigma_shape)
+    if n_media_channels is not None:
+      test_utils.assert_allclose(
+          posterior[constants.SLOPE_M].values,
+          np.ones((n_chains, n_keep, n_media_channels)),
+      )
+    if n_geos == 1 and n_controls is not None:
+      test_utils.assert_allclose(
+          posterior[constants.XI_C].values,
+          np.zeros((n_chains, n_keep, n_controls)),
+      )
+
   def test_sample_posterior_with_none_seed_tf(self):
     if backend.config.get_backend() == backend.config.Backend.JAX:
       self.skipTest("TF specific test for seed=None.")

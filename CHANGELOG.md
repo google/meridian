@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix an XLA compilation crash in JAX `sample_posterior` when a model has a
+    single-element `Deterministic` parameter group, such as a single paid media
+    channel or a national model with a single control, reach-and-frequency, or
+    non-media treatment variable.
 *   On the JAX backend, `sample_posterior` now runs the No-U-Turn Sampler
     (NUTS) on one flat vector of all unconstrained parameters instead of one
     state part per parameter. It samples from the same posterior with fewer

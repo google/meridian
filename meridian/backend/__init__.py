@@ -1466,6 +1466,73 @@ if _BACKEND == config.Backend.JAX:
     def _default_event_space_bijector(self):
       return tfp_jax.bijectors.Identity()
 
+  class _SplitWithoutEmptyParts(tfp_jax.bijectors.Split):
+    """`Split` along the last axis that omits zero-size parts.
+
+    Zero-size parts (for example, parameters with `Deterministic` priors) are
+    never concatenated into or sliced out of the flat vector, avoiding an XLA
+    StableHLO `SliceOpConcatSimplify` compiler crash on empty slices at non-zero
+    offsets while preserving per-part shapes and dtypes.
+    """
+
+    def __init__(
+        self, num_or_size_splits, axis=-1, validate_args=False, name="split"
+    ):
+      sizes = tuple(int(s) for s in np.asarray(num_or_size_splits).tolist())
+      if int(axis) != -1 or any(s < 0 for s in sizes):
+        raise ValueError(
+            "_SplitWithoutEmptyParts requires axis=-1 and non-negative static"
+            f" split sizes; got axis={axis!r}, sizes={sizes!r}."
+        )
+      self._static_sizes = sizes
+      self._has_empty = 0 in sizes
+      non_empty = [s for s in sizes if s > 0]
+      self._non_empty_split_indices = tuple(
+          int(i) for i in np.cumsum(non_empty)[:-1]
+      )
+      super().__init__(
+          num_or_size_splits=num_or_size_splits,
+          axis=axis,
+          validate_args=validate_args,
+          name=name,
+      )
+
+    def _forward(self, x):
+      if not self._has_empty:
+        return super()._forward(x)
+      self._validate_input_shape(x.shape)
+      if not any(self._static_sizes):
+        return [
+            jax_ops.zeros(x.shape[:-1] + (0,), dtype=x.dtype)
+            for _ in self._static_sizes
+        ]
+      if self._non_empty_split_indices:
+        non_empty_parts = iter(
+            jax_ops.split(x, self._non_empty_split_indices, axis=-1)
+        )
+      else:
+        non_empty_parts = iter((x,))
+      return [
+          next(non_empty_parts)
+          if size > 0
+          else jax_ops.zeros(x.shape[:-1] + (0,), dtype=x.dtype)
+          for size in self._static_sizes
+      ]
+
+    def _inverse(self, y):
+      if not self._has_empty:
+        return super()._inverse(y)
+      parts = [jax_ops.asarray(part) for part in y]
+      self._validate_output_shapes([part.shape for part in parts])
+      non_empty = [
+          part for part, size in zip(parts, self._static_sizes) if size > 0
+      ]
+      if not non_empty:
+        return jax_ops.zeros(parts[0].shape[:-1] + (0,), dtype=parts[0].dtype)
+      if len(non_empty) == 1:
+        return non_empty[0]
+      return jax_ops.concatenate(non_empty, axis=-1)
+
   def _flat_unconstraining_bijector(pinned_dist):
     """Returns a bijector from one flat unconstrained vector to the latents.
 
@@ -1501,7 +1568,7 @@ if _BACKEND == config.Backend.JAX:
             bijectors_lib.Reshape(event_shape_out=shape, event_shape_in=[-1])
             for shape in unconstrained_shapes
         ]),
-        bijectors_lib.Split(sizes, axis=-1),
+        _SplitWithoutEmptyParts(sizes, axis=-1),
     ])
     return bijector
 

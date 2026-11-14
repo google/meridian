@@ -3147,6 +3147,300 @@ class FlatWindowedAdaptiveNutsTest(parameterized.TestCase):
     test_utils.assert_allclose(x.mean(axis=0), 0.8 * np.asarray(y), atol=0.05)
     test_utils.assert_allclose(x.std(axis=0), 1 / np.sqrt(5), rtol=0.1)
 
+  def _make_empty_latent_pinned_model(self, layout: str):
+    """Builds a pinned joint distribution with zero-size unconstrained parts."""
+    tfd = backend.tfd
+    dtype = backend.float_dtype
+    zero = backend.to_tensor(0.0, dtype=dtype)
+    one = backend.to_tensor(1.0, dtype=dtype)
+    two = backend.to_tensor(2.0, dtype=dtype)
+
+    def fixed_part(name: str, val=two):
+      # A scalar `Deterministic` prior has unconstrained shape (0,), so its
+      # slice from the flat vector feeds TFP's pad helper directly without an
+      # intervening reshape.
+      return tfd.Deterministic(val, name=name)
+
+    def model():
+      if layout == "empty_first":
+        fixed = yield fixed_part("fixed")
+        scale = yield tfd.HalfNormal(one, name="scale")
+        loc = yield tfd.Normal(backend.zeros([2], dtype=dtype), 1.0, name="loc")
+      elif layout == "empty_middle":
+        scale = yield tfd.HalfNormal(one, name="scale")
+        fixed = yield fixed_part("fixed")
+        loc = yield tfd.Normal(backend.zeros([2], dtype=dtype), 1.0, name="loc")
+      elif layout == "empty_last":
+        scale = yield tfd.HalfNormal(one, name="scale")
+        loc = yield tfd.Normal(backend.zeros([2], dtype=dtype), 1.0, name="loc")
+        fixed = yield fixed_part("fixed")
+      elif layout == "several_empties":
+        scale = yield tfd.HalfNormal(one, name="scale")
+        _ = yield tfd.Sample(
+            tfd.Normal(zero, 1.0), sample_shape=0, name="empty_vec"
+        )
+        fixed_a = yield fixed_part("fixed_a", two)
+        fixed_b = yield tfd.BatchBroadcast(
+            tfd.Deterministic(one), 1, name="fixed_b"
+        )
+        loc = yield tfd.Normal(backend.zeros([2], dtype=dtype), 1.0, name="loc")
+        fixed_end = yield fixed_part("fixed_end", one)
+        fixed = fixed_a + backend.reduce_sum(fixed_b, axis=-1) - fixed_end
+      elif layout == "single_non_empty_with_empties":
+        fixed_a = yield fixed_part("fixed_a", two)
+        scale = yield tfd.HalfNormal(one, name="scale")
+        fixed_b = yield tfd.BatchBroadcast(
+            tfd.Deterministic(one), 1, name="fixed_b"
+        )
+        fixed = fixed_a + backend.reduce_sum(fixed_b, axis=-1)
+        loc = backend.ones([2], dtype=dtype)
+      elif layout == "all_empty":
+        fixed = yield fixed_part("fixed_a", two)
+        fixed_b = yield tfd.BatchBroadcast(
+            tfd.Deterministic(one), 1, name="fixed_b"
+        )
+        scale = backend.reduce_sum(fixed_b, axis=-1)[..., None]
+        loc = backend.ones([2], dtype=dtype)
+      else:
+        raise ValueError(f"Unknown layout: {layout}")
+      yield tfd.Normal(loc * fixed[..., None], scale, name="obs")
+
+    joint_dist = tfd.JointDistributionCoroutineAutoBatched(model)
+    return joint_dist.experimental_pin(
+        obs=backend.to_tensor([0.5, -1.0], dtype=dtype)
+    )
+
+  @staticmethod
+  def _iter_jaxpr_eqns(jaxpr_or_closed):
+    jaxpr = getattr(jaxpr_or_closed, "jaxpr", jaxpr_or_closed)
+    for eqn in jaxpr.eqns:
+      yield eqn
+      for param in eqn.params.values():
+        items = param if isinstance(param, (list, tuple)) else (param,)
+        for item in items:
+          if hasattr(item, "eqns") or hasattr(item, "jaxpr"):
+            yield from FlatWindowedAdaptiveNutsTest._iter_jaxpr_eqns(item)
+
+  @parameterized.named_parameters(
+      ("empty_first", "empty_first", (0, 1, 2)),
+      ("empty_middle", "empty_middle", (1, 0, 2)),
+      ("empty_last", "empty_last", (1, 2, 0)),
+      ("several_empties", "several_empties", (1, 0, 0, 0, 2, 0)),
+      (
+          "single_non_empty_with_empties",
+          "single_non_empty_with_empties",
+          (0, 1, 0),
+      ),
+      ("all_empty", "all_empty", (0, 0)),
+  )
+  def test_flat_sampler_omits_zero_size_parts_from_concat_and_slice(
+      self, layout: str, part_sizes: tuple[int, ...]
+  ):
+    windowed_sampling = importlib.import_module(
+        "tensorflow_probability.substrates.jax.experimental.mcmc."
+        "windowed_sampling"
+    )
+    pinned = self._make_empty_latent_pinned_model(layout)
+    seed = jax.random.PRNGKey(7)
+    setup_seed, _ = windowed_sampling.samplers.split_seed(seed, n=2)
+    target, init, *_ = windowed_sampling._setup_mcmc(  # pylint: disable=protected-access
+        pinned, n_chains=[4], seed=setup_seed
+    )
+
+    flat_nuts_setup = getattr(backend, "_flat_nuts_setup")
+    setup = flat_nuts_setup(pinned, 4, current_state=None, seed=seed)
+    flat_dist, flat_init, bijector = (
+        setup.target,
+        setup.initial_state,
+        setup.bijector,
+    )
+
+    event_size = sum(part_sizes)
+    self.assertEqual(tuple(flat_init.shape), (4, event_size))
+    non_empty_init = [part for part, size in zip(init, part_sizes) if size > 0]
+    if non_empty_init:
+      test_utils.assert_allclose(
+          flat_init, jnp.concatenate(non_empty_init, axis=-1)
+      )
+
+    points = jax.random.normal(
+        jax.random.PRNGKey(1), [5, 4, event_size], dtype=flat_init.dtype
+    )
+    offsets = np.cumsum(part_sizes)[:-1]
+    split_points = jnp.split(points, offsets, axis=-1)
+    test_utils.assert_allclose(
+        flat_dist.unnormalized_log_prob([points]),
+        target(*split_points),
+        rtol=1e-6,
+    )
+    latents = bijector.forward(points)
+    test_utils.assert_allclose(
+        bijector.inverse(latents), points, rtol=1e-6, atol=1e-6
+    )
+
+    inverse_eqns = list(
+        self._iter_jaxpr_eqns(jax.make_jaxpr(bijector.inverse)(latents))
+    )
+    for eqn in inverse_eqns:
+      if eqn.primitive.name == "concatenate":
+        for invar in eqn.invars:
+          self.assertNotIn(0, invar.aval.shape)
+
+    forward_eqns = list(
+        self._iter_jaxpr_eqns(jax.make_jaxpr(bijector.forward)(points))
+    )
+    for eqn in forward_eqns:
+      if eqn.primitive.name == "slice":
+        for outvar in eqn.outvars:
+          self.assertNotIn(0, outvar.aval.shape)
+
+    if event_size > 0:
+      flat_nuts = getattr(backend, "_flat_windowed_adaptive_nuts")
+      sampler_jaxpr = jax.make_jaxpr(
+          lambda: flat_nuts(
+              joint_dist=pinned,
+              n_chains=2,
+              n_draws=2,
+              num_adaptation_steps=1,
+              max_tree_depth=2,
+              seed=5,
+          )
+      )()
+      for eqn in self._iter_jaxpr_eqns(sampler_jaxpr):
+        if eqn.primitive.name == "concatenate" and eqn.outvars[0].aval.shape[
+            -1:
+        ] == (event_size,):
+          for invar in eqn.invars:
+            self.assertNotIn(0, invar.aval.shape)
+        if eqn.primitive.name == "slice" and eqn.invars[0].aval.shape[-1:] == (
+            event_size,
+        ):
+          for outvar in eqn.outvars:
+            self.assertNotIn(0, outvar.aval.shape)
+
+  @parameterized.named_parameters(
+      ("empty_first", "empty_first"),
+      ("empty_middle", "empty_middle"),
+      ("empty_last", "empty_last"),
+      ("several_empties", "several_empties"),
+      ("single_non_empty_with_empties", "single_non_empty_with_empties"),
+  )
+  def test_compiles_and_samples_with_zero_size_unconstrained_parts(
+      self, layout: str
+  ):
+    pinned = self._make_empty_latent_pinned_model(layout)
+    args = dict(
+        joint_dist=pinned,
+        n_chains=2,
+        n_draws=4,
+        num_adaptation_steps=2,
+        max_tree_depth=3,
+        seed=5,
+    )
+    flat_states, flat_trace = backend.xla_windowed_adaptive_nuts(**args)
+    expected_shapes = pinned.event_shape
+    expected_dtypes = pinned.dtype
+    self.assertEqual(flat_states._fields, expected_shapes._fields)
+    for name in expected_shapes._fields:
+      self.assertEqual(
+          tuple(getattr(flat_states, name).shape),
+          (4, 2) + tuple(getattr(expected_shapes, name)),
+          msg=name,
+      )
+      self.assertEqual(
+          getattr(flat_states, name).dtype,
+          getattr(expected_dtypes, name),
+          msg=name,
+      )
+    self.assertEqual(
+        set(flat_trace),
+        {
+            "step_size",
+            "target_log_prob",
+            "n_steps",
+            "diverging",
+            "variance_scaling",
+            "is_accepted",
+            "accept_ratio",
+            "tune",
+        },
+    )
+    self.assertEqual(tuple(flat_trace["step_size"].shape), (4,))
+    for name in ("target_log_prob", "n_steps", "diverging"):
+      self.assertEqual(tuple(flat_trace[name].shape), (4, 2), msg=name)
+    if layout == "several_empties":
+      with mock.patch.dict(os.environ, {"MERIDIAN_FLAT_NUTS": "false"}):
+        states, trace = backend.xla_windowed_adaptive_nuts(**args)
+      self.assertEqual(flat_states._fields, states._fields)
+      self.assertEqual(set(flat_trace), set(trace))
+      for name in ("step_size", "target_log_prob", "n_steps", "diverging"):
+        self.assertEqual(flat_trace[name].shape, trace[name].shape)
+    if layout in ("several_empties", "single_non_empty_with_empties"):
+      if layout == "several_empties":
+        self.assertEqual(tuple(flat_states.empty_vec.shape), (4, 2, 0))
+      test_utils.assert_allclose(flat_states.fixed_a, np.full((4, 2), 2.0))
+      test_utils.assert_allclose(flat_states.fixed_b, np.full((4, 2, 1), 1.0))
+    else:
+      test_utils.assert_allclose(flat_states.fixed, np.full((4, 2), 2.0))
+
+  def test_draws_identical_when_no_part_is_empty(self):
+    pinned = self._get_pinned_model()
+    flat_nuts = getattr(backend, "_flat_windowed_adaptive_nuts")
+
+    def run_sampler():
+      return flat_nuts(
+          joint_dist=pinned,
+          n_chains=3,
+          n_draws=6,
+          num_adaptation_steps=4,
+          max_tree_depth=4,
+          seed=11,
+      )
+
+    actual_lowered = jax.jit(run_sampler).lower()
+    actual_states, actual_trace = actual_lowered.compile()()
+
+    with mock.patch.object(
+        backend, "_SplitWithoutEmptyParts", backend.tfp_jax.bijectors.Split
+    ):
+      expected_lowered = jax.jit(run_sampler).lower()
+      expected_states, expected_trace = expected_lowered.compile()()
+
+    self.assertEqual(actual_lowered.as_text(), expected_lowered.as_text())
+    # Exact lowered StableHLO proves graph identity; allow 1-ULP runtime drift
+    # across separate XLA CPU compilations under fastbuild/coverage.
+    for name in expected_states._fields:
+      test_utils.assert_allclose(
+          getattr(actual_states, name),
+          getattr(expected_states, name),
+          rtol=1e-13,
+          atol=1e-13,
+          err_msg=name,
+      )
+    for name in ("step_size", "target_log_prob"):
+      test_utils.assert_allclose(
+          actual_trace[name],
+          expected_trace[name],
+          rtol=1e-13,
+          atol=1e-13,
+          err_msg=name,
+      )
+    for name in ("n_steps", "diverging"):
+      np.testing.assert_array_equal(
+          np.asarray(actual_trace[name]),
+          np.asarray(expected_trace[name]),
+          err_msg=name,
+      )
+
+  @parameterized.named_parameters(
+      ("non_last_axis", [1, 2], -2),
+      ("negative_size", [1, -1], -1),
+  )
+  def test_split_without_empty_parts_rejects_invalid_args(self, sizes, axis):
+    split_cls = getattr(backend, "_SplitWithoutEmptyParts")
+    with self.assertRaisesRegex(ValueError, "_SplitWithoutEmptyParts requires"):
+      split_cls(sizes, axis=axis)
+
 
 if __name__ == "__main__":
   absltest.main()
