@@ -137,8 +137,8 @@ def _central_tendency_and_ci_by_prior_and_posterior(
   """Calculates central tendency and CI of prior/posterior data for a metric.
 
   Args:
-    prior: A tensor with the prior data for the metric, or `None` to exclude
-      the prior distribution from the output.
+    prior: A tensor with the prior data for the metric, or `None` to exclude the
+      prior distribution from the output.
     posterior: A tensor with the posterior data for the metric, or `None` to
       exclude the posterior distribution from the output.
     metric_name: The name of the input metric for the computations.
@@ -232,8 +232,8 @@ def _gather_by_channel(
   """Takes the coefficients of a separate time period for each channel.
 
   Args:
-    coefficients: The coefficients by time period, shape `(..., n_geos,
-      n_times, n_channels)`.
+    coefficients: The coefficients by time period, shape `(..., n_geos, n_times,
+      n_channels)`.
     time_indices: For each output time period and channel, the time period to
       take the coefficient of, shape `(n_output_times, n_channels)`.
 
@@ -264,8 +264,8 @@ class _ChangepointIntervals:
     incremental_outcome: The incremental outcome over all geos in each
       interval's time periods, of shape `(n_chains, n_draws, n_channels,
       n_intervals)`.
-    spend: The spend over the same geos and time periods, of shape
-      `(n_channels, n_intervals)`.
+    spend: The spend over the same geos and time periods, of shape `(n_channels,
+      n_intervals)`.
     channels: The names of the channels.
     start_dates: The first time period of each interval, as a date string, of
       shape `(n_channels, n_intervals)`.
@@ -504,8 +504,8 @@ class Analyzer:
       effect: The effect that the channels with changepoints use. For a mapping
         from channel names to `changepoint_effects.Interval`, each channel in
         the mapping uses the coefficients of its own interval for every time
-        period, and the other channels with changepoints use the coefficients
-        of their latest interval.
+        period, and the other channels with changepoints use the coefficients of
+        their latest interval.
 
     Yields:
       Nothing.
@@ -1009,9 +1009,9 @@ class Analyzer:
       combined_media_transformed: The adstock and Hill output of all channels,
         shape `(..., n_geos, n_times, n_channels)`.
       combined_betas: The coefficients of each channel type. The types with
-        changepoints must have the coefficient of each time period, shape
-        `(..., n_geos, n_times, n_channels)`. The others have shape `(...,
-        n_geos, n_channels)`.
+        changepoints must have the coefficient of each time period, shape `(...,
+        n_geos, n_times, n_channels)`. The others have shape `(..., n_geos,
+        n_channels)`.
       has_changepoints: Whether each channel type in `combined_betas` has
         changepoints.
 
@@ -2456,15 +2456,13 @@ class Analyzer:
     )
     max_intervals = max(info.max_intervals for info, _ in groups)
     # The time periods of each interval, shape `(channel, interval, time)`.
-    weights = np.concatenate(
-        [
-            np.pad(
-                info.weights,
-                [(0, 0), (0, max_intervals - info.max_intervals), (0, 0)],
-            )
-            for info, _ in groups
-        ]
-    )
+    weights = np.concatenate([
+        np.pad(
+            info.weights,
+            [(0, 0), (0, max_intervals - info.max_intervals), (0, 0)],
+        )
+        for info, _ in groups
+    ])
     interval_outcome = np.einsum(
         "cdtv,vkt->cdvk", incremental_outcome[..., columns], weights
     )
@@ -3009,8 +3007,8 @@ class Analyzer:
     than in `InputData`, `pct_of_contribution` is not defined because
     `expected_outcome()` is not defined for new time periods.
 
-    Note that `mroi` and `effectiveness` metrics are not defined (`math.nan`)
-    for the aggregate `"All Paid Channels"` channel dimension.
+    Note that `mroi`, `mcpik`, and `effectiveness` metrics are not defined
+    (`math.nan`) for the aggregate `"All Paid Channels"` channel dimension.
 
     If `selected_geos` or `selected_times` is specified, or if
     `aggregate_geos=False` or `aggregate_times=False`, then the spend-dependent
@@ -3050,11 +3048,11 @@ class Analyzer:
         all of the regions.
       aggregate_times: Boolean. If `True`, the expected outcome is summed over
         all of the time periods. Note that if `False`, ROI, mROI, Effectiveness,
-        and CPIK are not reported because they do not have a clear
+        CPIK, and mCPIK are not reported because they do not have a clear
         interpretation by time period.
       optimal_frequency: Deprecated. This argument is unused and will be removed
-        in a future version. Historical frequency is always used for the
-        metrics calculation.
+        in a future version. Historical frequency is always used for the metrics
+        calculation.
       use_kpi: Boolean. If `True`, the summary metrics are calculated using KPI.
         If `False`, the metrics are calculated using revenue.
       confidence_level: Confidence level for summary metrics credible intervals,
@@ -3090,11 +3088,14 @@ class Analyzer:
       following non-paid data variables: `incremental_outcome`,
       `pct_of_contribution`, `effectiveness`, and the following paid
       data variables: `impressions`, `pct_of_impressions`, `spend`,
-      `pct_of_spend`, `CPM`, `roi`, `mroi`, `cpik`. The paid data variables are
-      only included when `include_non_paid_channels` is `False`. Note that
-      `roi`, `mroi`, `cpik`, and `effectiveness` metrics are not reported
-      when `aggregate_times=False` because they do not have a clear
-      interpretation by time period.
+      `pct_of_spend`, `CPM`, `roi`, `mroi`, `cpik`, `mcpik`. The paid data
+      variables are only included when `include_non_paid_channels` is `False`.
+      `mcpik` is the marginal cost per incremental KPI: the additional spend
+      required for one additional unit of KPI, computed per draw as the
+      reciprocal of `mroi` on the KPI scale (so its mean is not simply
+      `1 / mroi.mean`). Note that `roi`, `mroi`, `cpik`, `mcpik`, and
+      `effectiveness` metrics are not reported when `aggregate_times=False`
+      because they do not have a clear interpretation by time period.
 
     Raises:
       ValueError: If both `include_prior` and `include_posterior` are `False`.
@@ -3150,9 +3151,13 @@ class Analyzer:
         compute_fn: Callable[..., backend.Tensor], **kwargs
     ) -> tuple[backend.Tensor | None, backend.Tensor | None]:
       """Returns `compute_fn` results for (prior, posterior); `None` if skipped."""
-      prior = compute_fn(use_posterior=False, **kwargs) if include_prior else None
+      prior = (
+          compute_fn(use_posterior=False, **kwargs) if include_prior else None
+      )
       posterior = (
-          compute_fn(use_posterior=True, **kwargs) if include_posterior else None
+          compute_fn(use_posterior=True, **kwargs)
+          if include_posterior
+          else None
       )
       return prior, posterior
 
@@ -3348,8 +3353,8 @@ class Analyzer:
         # Therefore, NaN values are returned for certain metrics if
         # aggregate_times=False.
         warnings.warn(
-            "ROI, mROI, Effectiveness, and CPIK are not reported because they "
-            "do not have a clear interpretation by time period."
+            "ROI, mROI, Effectiveness, CPIK, and mCPIK are not reported because"
+            " they do not have a clear interpretation by time period."
         )
         datasets = [
             spend_data,
@@ -3371,7 +3376,8 @@ class Analyzer:
             xr_dims=xr_dims_with_ci_and_distribution,
             xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
             confidence_level=confidence_level,
-            spend_with_total=spend_with_total * marginal_roi_incremental_increase,
+            spend_with_total=spend_with_total
+            * marginal_roi_incremental_increase,
             metric_name=constants.MROI,
             # Drop mROI metric values in the Dataset's data_vars for the
             # aggregated "All Paid Channels" channel dimension value.
@@ -3398,6 +3404,38 @@ class Analyzer:
             xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
             confidence_level=confidence_level,
         )
+        # The marginal incremental KPI uses the same spend perturbation as mROI,
+        # so when `use_kpi=True` the mROI tensors are already KPI-based and can
+        # be reused instead of recomputing the counterfactual.
+        if use_kpi:
+          incremental_kpi_mroi_prior = incremental_outcome_mroi_prior
+          incremental_kpi_mroi_posterior = incremental_outcome_mroi_posterior
+        else:
+          incremental_kpi_mroi_prior, incremental_kpi_mroi_posterior = (
+              compute_by_distribution(
+                  self.compute_incremental_outcome_aggregate,
+                  new_data=new_data.filter_fields(incremental_outcome_fields),
+                  use_kpi=True,
+                  include_non_paid_channels=False,
+                  by_reach=marginal_roi_by_reach,
+                  scaling_factor0=1,
+                  scaling_factor1=1 + marginal_roi_incremental_increase,
+                  **dim_kwargs,
+                  **batched_kwargs,
+              )
+          )
+        mcpik = self._compute_cpik_aggregate(
+            incremental_kpi_prior=incremental_kpi_mroi_prior,
+            incremental_kpi_posterior=incremental_kpi_mroi_posterior,
+            spend_with_total=spend_with_total
+            * marginal_roi_incremental_increase,
+            xr_dims=xr_dims_with_ci_and_distribution,
+            xr_coords=xr_coords_with_ci_and_distribution,  # pyrefly: ignore[bad-argument-type]
+            confidence_level=confidence_level,
+            metric_name=constants.MCPIK,
+            # Dropped for "All Paid Channels" for the same reason as mROI: the
+            # allocation of the "next dollar" across channels is arbitrary.
+        ).where(lambda ds: ds.channel != constants.ALL_CHANNELS)
         datasets = [
             spend_data,
             incremental_outcome,
@@ -3406,6 +3444,7 @@ class Analyzer:
             effectiveness,
             mroi,
             cpik,
+            mcpik,
         ]
 
     merged = xr.merge(datasets, compat="no_conflicts")
@@ -4983,7 +5022,10 @@ class Analyzer:
     # TODO: Support calibration_period_bool.
     prior, posterior = (
         None if outcome is None else outcome / spend_with_total  # pyrefly: ignore[unsupported-operation]
-        for outcome in (incremental_outcome_prior, incremental_outcome_posterior)
+        for outcome in (
+            incremental_outcome_prior,
+            incremental_outcome_posterior,
+        )
     )
     return _central_tendency_and_ci_by_prior_and_posterior(
         prior=prior,
@@ -5052,7 +5094,10 @@ class Analyzer:
     """Computes the effectiveness metric for the prior and/or posterior."""
     prior, posterior = (
         None if outcome is None else outcome / impressions_with_total  # pyrefly: ignore[unsupported-operation]
-        for outcome in (incremental_outcome_prior, incremental_outcome_posterior)
+        for outcome in (
+            incremental_outcome_prior,
+            incremental_outcome_posterior,
+        )
     )
     return _central_tendency_and_ci_by_prior_and_posterior(
         prior=prior,
@@ -5072,8 +5117,9 @@ class Analyzer:
       xr_dims: Sequence[str],
       xr_coords: Mapping[str, tuple[Sequence[str], Sequence[str]]],
       confidence_level: float = constants.DEFAULT_CONFIDENCE_LEVEL,
+      metric_name: str = constants.CPIK,
   ) -> xr.Dataset:
-    """Computes the CPIK metric for the prior and/or posterior."""
+    """Computes the CPIK or mCPIK metric for the prior and/or posterior."""
     prior, posterior = (
         None if kpi is None else spend_with_total / kpi  # pyrefly: ignore[unsupported-operation]
         for kpi in (incremental_kpi_prior, incremental_kpi_posterior)
@@ -5081,7 +5127,7 @@ class Analyzer:
     return _central_tendency_and_ci_by_prior_and_posterior(
         prior=prior,
         posterior=posterior,
-        metric_name=constants.CPIK,
+        metric_name=metric_name,
         xr_dims=xr_dims,
         xr_coords=xr_coords,
         confidence_level=confidence_level,

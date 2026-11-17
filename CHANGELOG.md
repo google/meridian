@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add a marginal cost per incremental KPI (`mcpik`) metric to
+    `Analyzer.summary_metrics`, computed per draw as the additional spend per
+    additional unit of KPI under the same spend perturbation as `mroi`. Like
+    `mroi`, it is only reported when `aggregate_times=True` and is undefined for
+    the aggregate "All Paid Channels".
 *   Fix an XLA compilation crash in JAX `sample_posterior` when a model has a
     single-element `Deterministic` parameter group, such as a single paid media
     channel or a national model with a single control, reach-and-frequency, or
