@@ -57,6 +57,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     `Non-Driver` to `Contributor` / `Non-Contributor` in the Model Health
     report. `meridian.analysis.review.constants.DRIVER` and `NON_DRIVER` are
     renamed to `CONTRIBUTOR` and `NON_CONTRIBUTOR`.
+*   Clarify in the Model Health Report's Channel calibration recommendation
+    banner that the overall recommendation is based on the composite
+    calibration score and that flagged criteria are labeled as contributors in
+    the table.
 
 ## [2.2.0] - 2026-11-05
 

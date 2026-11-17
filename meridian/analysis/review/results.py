@@ -2144,10 +2144,12 @@ def build_calibration_recommendation_text(
         return (
             f"{rec_clause}: {drivers_text}."
             f" {constants.SEE_CHANNEL_CALIBRATION_RECOMMENDATION_BELOW}"
+            f" {constants.CHANNEL_CALIBRATION_RECOMMENDATION_CLARIFICATION}"
         )
       return (
           f"{rec_clause}."
           f" {constants.SEE_CHANNEL_CALIBRATION_RECOMMENDATION_BELOW}"
+          f" {constants.CHANNEL_CALIBRATION_RECOMMENDATION_CLARIFICATION}"
       )
     if has_drivers:
       candidate_phrase = (
@@ -2160,10 +2162,8 @@ def build_calibration_recommendation_text(
           f" {drivers_text}. We recommend reviewing the table and plots below"
           f" to check if {candidate_phrase} for calibration via an"
           " incrementality experiment such as those run with Meridian GeoX."
+          f" {constants.CHANNEL_CALIBRATION_RECOMMENDATION_CLARIFICATION}"
       )
-    return (
-        f"{constants.NO_CHANNELS_REQUIRE_CALIBRATION}"
-        f" {constants.REVIEW_BOUNDARIES_INFO_TEXT}"
-    )
+    return constants.NO_CHANNELS_REQUIRE_CALIBRATION_RECOMMENDATION
 
   raise ValueError(f"Unknown location: {location}")
