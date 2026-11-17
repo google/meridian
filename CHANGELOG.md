@@ -44,6 +44,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     exceed `WeeklyOptimizationGrid` coverage for channels whose spend is close
     to the rounding step. Optimization bounds and optimized spend can shift by
     one rounding step compared with earlier versions.
+*   Fix `PriorDistribution` rejecting a valid `TruncatedNormal` prior that is a
+    component of an `IndependentMultivariateDistribution` when one of its
+    bounds is in an extreme tail of the untruncated normal distribution. The
+    support of each component is now checked separately.
 *   Fix `WeeklyOptimizationGrid.to_optimization_grid` prematurely rounding
     historical channel spend before multiplying by the grid's edge spend
     multipliers when validating optimization bounds, which could falsely reject
