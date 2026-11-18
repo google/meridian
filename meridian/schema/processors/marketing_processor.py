@@ -166,6 +166,10 @@ class MediaSummarySpec(model_processor.Spec):
     media_selected_times: Optional list of date strings specifying a subset of
       time periods in `new_data`, if provided, or from model's original media
       data.
+    include_response_curves: Boolean. If `True`, a response curve is computed
+      for each paid channel when `aggregate_times` is `True`. Setting this to
+      `False` skips the response curve computation, which improves performance
+      when only the summary metrics are needed. Defaults to `True`.
   """
 
   aggregate_times: bool = True
@@ -173,6 +177,7 @@ class MediaSummarySpec(model_processor.Spec):
   include_non_paid_channels: bool = False
   new_data: tensors.DataTensors | None = None
   media_selected_times: Sequence[str] | None = None
+  include_response_curves: bool = True
 
   def validate(self):
     pass
@@ -249,7 +254,7 @@ class MarketingAnalysisSpec(model_processor.DatedSpec):
       within the `new_data.time`.
     response_curve_spec: Parameters for creating response curves. Response
       curves are only computed for specs that aggregate times and have a
-      `media_summary_spec` selected.
+      `media_summary_spec` selected with `include_response_curves=True`.
     confidence_level: Confidence level for credible intervals, represented as a
       value between zero and one. Defaults to 0.9.
   """
@@ -457,7 +462,9 @@ class MarketingProcessor(
     ).sel(distribution=constants.POSTERIOR)
 
     # Response curves are only computed for specs that aggregate times.
-    if media_summary_spec.aggregate_times:
+    if not media_summary_spec.include_response_curves:
+      response_curves = None
+    elif media_summary_spec.aggregate_times:
       response_curve_spec = marketing_analysis_spec.response_curve_spec
       response_curves = self._analyzer.response_curves(
           confidence_level=marketing_analysis_spec.confidence_level,

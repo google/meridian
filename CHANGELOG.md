@@ -23,6 +23,9 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add `include_response_curves` to `MediaSummarySpec`. Set it to `False` to
+    skip the response curve computation in `MarketingProcessor` when only the
+    media summary metrics are needed.
 *   `ModelFit.plot_model_fit()` plots can now be panned and zoomed on both the
     time and the outcome axes: drag to pan, scroll to zoom, and double-click to
     reset the view. The Model Results Summary report includes the same
