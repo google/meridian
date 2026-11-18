@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+from typing import Any
 import warnings
 
 from absl.testing import absltest
@@ -451,6 +452,15 @@ def _get_knot_layers(plot: alt.Chart) -> list[alt.Chart]:
   ]
 
 
+def _get_zoom_selections(plot: alt.TopLevelMixin) -> list[dict[str, Any]]:
+  """Returns the specs of the selections that pan and zoom `plot`."""
+  return [
+      param
+      for param in plot.to_dict()["params"]
+      if param.get("bind") == "scales"
+  ]
+
+
 class ModelFitTest(absltest.TestCase):
 
   @classmethod
@@ -826,6 +836,10 @@ class ModelFitTest(absltest.TestCase):
             "grid": False,
             "tickCount": 8,
             "format": "%Y %b",
+            "labelExpr": (
+                "date(datum.value) === 1 ? datum.label :"
+                " timeFormat(datum.value, '%b %d')"
+            ),
         },
     )
     self.assertEqual(
@@ -896,7 +910,11 @@ class ModelFitTest(absltest.TestCase):
 
   def test_model_fit_selection_points(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
-    selection_points = plot.params[0].select
+    selection_points = next(
+        param["select"]
+        for param in plot.to_dict()["params"]
+        if param.get("select", {}).get("type") == "point"
+    )
     self.assertTrue(selection_points["nearest"])
     self.assertEqual(selection_points["on"], "pointerover")
     self.assertEqual(selection_points["clear"], "pointerout")
@@ -904,6 +922,38 @@ class ModelFitTest(absltest.TestCase):
   def test_model_fit_correct_config(self):
     plot = self.model_fit_kpi_type_revenue.plot_model_fit()
     self.assertEqual(plot.config.axis.to_dict(), formatter.TEXT_CONFIG)
+
+  def test_model_fit_zoom_pans_and_zooms_both_axes(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit()
+
+    (zoom,) = _get_zoom_selections(plot)
+    self.assertEqual(
+        zoom["select"],
+        {"type": "interval", "encodings": ["x", "y"], "clear": "dblclick"},
+    )
+
+  def test_model_fit_zoom_geo_level(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(
+        selected_geos=["geo 1", "geo 3"], show_geo_level=True
+    )
+
+    self.assertIsInstance(plot, alt.FacetChart)
+    (zoom,) = _get_zoom_selections(plot)
+    self.assertEqual(zoom["select"]["encodings"], ["x", "y"])
+
+  def test_model_fit_enable_zoom_false_plots_fixed_axes(self):
+    plot = self.model_fit_kpi_type_revenue.plot_model_fit(enable_zoom=False)
+
+    self.assertEmpty(_get_zoom_selections(plot))
+    self.assertEqual(
+        plot.layer[0].encoding.x["axis"].to_dict(),
+        {
+            "domainColor": c.GREY_300,
+            "grid": False,
+            "tickCount": 8,
+            "format": "%Y %b",
+        },
+    )
 
 
 class ReachAndFrequencyTest(parameterized.TestCase):

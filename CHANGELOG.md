@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `ModelFit.plot_model_fit()` plots can now be panned and zoomed on both the
+    time and the outcome axes: drag to pan, scroll to zoom, and double-click to
+    reset the view. The Model Results Summary report includes the same
+    interaction. To get a plot with fixed axes, pass `enable_zoom=False`.
 *   Fix an XLA compilation crash in JAX `sample_posterior` when a model has a
     single-element `Deterministic` parameter group, such as a single paid media
     channel or a national model with a single control, reach-and-frequency, or

@@ -48,6 +48,14 @@ alt.data_transformers.disable_max_rows()
 # Field name for the zero-contribution legend entry in the bump chart.
 _ZERO_CONTRIBUTION_LEGEND_FIELD = 'zero_contribution_legend'
 
+# Time axis labels of the zoomable model fit plot. A tick on the first day of a
+# month keeps its year and month label. Any other day is only a tick once the
+# plot is zoomed in to a short time range, where it is labeled with its month
+# and day.
+_MODEL_FIT_ZOOM_TIME_LABEL_EXPR = (
+    "date(datum.value) === 1 ? datum.label : timeFormat(datum.value, '%b %d')"
+)
+
 
 def _get_channels_to_exclude(
     channels: xr.DataArray | None, spec: list[str] | str | None
@@ -463,8 +471,12 @@ class ModelFit:
       include_baseline: bool = True,
       include_ci: bool = True,
       include_knots: bool = False,
+      enable_zoom: bool = True,
   ) -> alt.Chart:
     """Plots the expected versus actual outcome over time.
+
+    By default, the plot is interactive. Drag to pan and scroll to zoom on both
+    the time and the outcome axes, and double-click to reset the view.
 
     Args:
       selected_times: Optional list of a subset of time dimensions to include.
@@ -486,6 +498,8 @@ class ModelFit:
         outcome.
       include_knots: If `True`, shows vertical reference lines at the time
         periods where the model's knots are located.
+      enable_zoom: If `True`, the plot can be panned and zoomed on both the time
+        and the outcome axes. If `False`, the plot has fixed axes.
 
     Returns:
       An Altair plot showing the model fit.
@@ -544,6 +558,11 @@ class ModelFit:
                 grid=False,
                 tickCount=8,
                 domainColor=c.GREY_300,
+                labelExpr=(
+                    _MODEL_FIT_ZOOM_TIME_LABEL_EXPR
+                    if enable_zoom
+                    else alt.Undefined
+                ),
             ),
         ),
         y=alt.Y(
@@ -562,6 +581,15 @@ class ModelFit:
         ),
         color=alt.Color('type:N', scale=alt.Scale(domain=domain, range=colors)),
     )
+
+    if enable_zoom:
+      # Binding an interval selection to the scales pans the plot on drag and
+      # zooms it on scroll, on both axes.
+      lines = lines.add_params(
+          alt.selection_interval(
+              bind='scales', encodings=['x', 'y'], clear='dblclick'
+          )
+      )
 
     tooltip = [alt.Tooltip(f'{c.TIME}:T', title='Time period')]
     for field in domain:

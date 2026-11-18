@@ -28,7 +28,8 @@ EXPECTED_ACTUAL_OUTCOME_CHART_ID = 'expected-actual-outcome-chart'
 EXPECTED_ACTUAL_OUTCOME_CHART_TITLE = 'Expected {outcome} vs. actual {outcome}'
 EXPECTED_ACTUAL_OUTCOME_CHART_DESCRIPTION_FORMAT = """Note: The baseline represents the
 expected {outcome} without any media execution. The shaded blue area represents
-the 90% credible interval."""
+the 90% credible interval. Drag the chart to pan, scroll to zoom, and
+double-click to reset the view."""
 
 PREDICTIVE_ACCURACY_TABLE_ID = 'model-fit-statistics-table-chart'
 PREDICTIVE_ACCURACY_TABLE_TITLE = 'Model fit metrics'
