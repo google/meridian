@@ -1,27 +1,17 @@
 # How to Contribute
 
-We'd love to accept your patches and contributions to this project. There are
-just a few small guidelines you need to follow.
+Thank you for your interest in Meridian.
 
-## Contributor License Agreement
+## Pull Requests
 
-Contributions to this project must be accompanied by a Contributor License
-Agreement (CLA). You (or your employer) retain the copyright to your
-contribution; this simply gives us permission to use and redistribute your
-contributions as part of the project. Head over to
-<https://cla.developers.google.com/> to see your current agreements on file or
-to sign a new one.
+We don't accept pull requests. Meridian is developed in Google's internal
+repository, and this GitHub repository is a one-way mirror of it, so pull
+requests can't be merged here.
 
-You generally only need to submit a CLA once, so if you've already submitted one
-(even if it was for a different project), you probably don't need to do it
-again.
-
-## Code Reviews
-
-All submissions, including submissions by project members, require review. We
-use GitHub pull requests for this purpose. Consult
-[GitHub Help](https://help.github.com/articles/about-pull-requests/) for more
-information on using pull requests.
+To report a bug or suggest a change, please open an
+[issue](https://github.com/google/meridian/issues) or start a
+[discussion](https://github.com/google/meridian/discussions). If you have a fix
+in mind, describe it there, and the Meridian team can make the change.
 
 ## Community Guidelines
 

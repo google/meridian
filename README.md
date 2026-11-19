@@ -139,11 +139,11 @@ tab of the Meridian GitHub repository. We have an internal roadmap for Meridian
 development, but would love your inputs for new feature requests so that we can
 prioritize them based on the roadmap.
 
-**Pull requests**: These are appreciated but are very difficult for us to merge
-because the code in this repository is linked to Google internal systems and has
-to pass internal review. If you submit a pull request and we believe that we can
-incorporate a change in the base code, we will reach out to you directly about
-this.
+**Pull requests**: We don't accept pull requests, because this repository is a
+one-way mirror of Google's internal repository (see
+[CONTRIBUTING.md](https://github.com/google/meridian/blob/main/CONTRIBUTING.md)).
+To suggest a change, please open an [issue](https://github.com/google/meridian/issues)
+or a [discussion](https://github.com/google/meridian/discussions).
 
 ## Citing Meridian
 
