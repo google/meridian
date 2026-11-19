@@ -23,6 +23,25 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `MediaSummary.plot_channel_contribution_area_chart()` now plots the
+    contribution of each control variable as its own area instead of as part of
+    the baseline, and is interactive. The Model Results Summary report includes
+    the same changes.
+    *   Control variables: the contribution of a control variable is measured
+        against the mean of that variable, so it can be negative. To keep the
+        control variables in the baseline, pass `separate_controls=False`.
+    *   Outcome axis: the axis no longer starts at the lowest baseline value. It
+        fits the plotted contributions, and negative contributions are stacked
+        below zero.
+    *   Zoom: drag to pan, scroll to zoom on both the time and the outcome axes,
+        and double-click to reset the view. To get a plot with fixed axes, pass
+        `enable_zoom=False`.
+    *   Variable filter: click a legend entry to hide that variable or to show
+        it again. To turn this off, pass `enable_variable_filter=False`.
+*   Add `Analyzer.control_contributions()`, which returns the part of the
+    expected outcome that is due to each control variable, and a
+    `separate_controls` argument to `MediaSummary.contribution_metrics()`, which
+    reports the control variables separately from the baseline.
 *   `model.load_mmm()` now raises a `ValueError` directing users to
     `meridian.schema.serde.meridian_serde.load_meridian()` when given a
     protobuf file (`.binpb`, `.txtpb`, or `.textproto`, case-insensitive), or

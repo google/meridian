@@ -2903,6 +2903,125 @@ class Analyzer:
         new_data=inputs.tensors, **expected_outcome_kwargs
     )
 
+  def control_contributions(
+      self,
+      use_posterior: bool = True,
+      selected_geos: Sequence[str] | None = None,
+      selected_times: Sequence[str] | None = None,
+      aggregate_geos: bool = True,
+      aggregate_times: bool = True,
+      use_kpi: bool = False,
+      batch_size: int = constants.DEFAULT_BATCH_SIZE,
+  ) -> backend.Tensor:
+    """Calculates the part of the expected outcome due to each control variable.
+
+    The baseline, which is the expected outcome without any treatment effect,
+    includes the effect of the control variables. This method returns that
+    effect separately for each control variable and for each posterior (or
+    prior) parameter draw.
+
+    The contribution of a control variable is measured against the mean of that
+    variable over all geos and time periods (the mean of the population-scaled
+    values, for a population-scaled control variable). It is positive where the
+    variable moves the expected outcome above its level at that mean, and
+    negative where it moves the expected outcome below it. Subtracting the
+    contributions of all control variables from `expected_outcome()` gives the
+    expected outcome with every control variable held at its mean.
+
+    Note: Control variables are in the model to adjust for confounding, and
+    their coefficients are not estimates of causal effects. Read these
+    contributions as a description of how the fitted model's expected outcome
+    varies with each control variable.
+
+    Args:
+      use_posterior: Boolean. If `True`, the contributions are calculated from
+        the posterior distribution. Otherwise, they are calculated from the
+        prior distribution.
+      selected_geos: Optional list containing a subset of geos to include. By
+        default, all geos are included.
+      selected_times: Optional list containing a subset of dates to include. The
+        values accepted here must match time dimension coordinates from
+        `InputData.time`. By default, all time periods are included.
+      aggregate_geos: Boolean. If `True`, the contributions are summed over all
+        of the regions.
+      aggregate_times: Boolean. If `True`, the contributions are summed over all
+        of the time periods.
+      use_kpi: Boolean. If `True`, the contributions are in KPI units; otherwise
+        they are in revenue units `(kpi * revenue_per_kpi)`. `use_kpi` is
+        treated as `True` if `revenue_per_kpi` is not defined.
+      batch_size: Integer representing the maximum draws per chain in each
+        batch. The calculation is run in batches to avoid memory exhaustion. If
+        a memory error occurs, try reducing `batch_size`.
+
+    Returns:
+      Tensor of control variable contributions with dimensions `(n_chains,
+      n_draws, n_geos, n_times, n_controls)`. The `n_geos` and `n_times`
+      dimensions are dropped if `aggregate_geos=True` or `aggregate_times=True`,
+      respectively.
+
+    Raises:
+      ValueError: If the model has no control variables.
+      NotFittedModelError: If `sample_posterior()` (for `use_posterior=True`)
+        or `sample_prior()` (for `use_posterior=False`) has not been called
+        prior to calling this method.
+    """
+    controls_scaled = self.model_context.controls_scaled
+    if controls_scaled is None:
+      raise ValueError(
+          "`control_contributions()` requires a model with control variables."
+      )
+    use_kpi = self._use_kpi(use_kpi)
+    if self.model_context.is_national:
+      _warn_if_geo_arg_in_kwargs(
+          aggregate_geos=aggregate_geos,
+          selected_geos=selected_geos,
+      )
+    dist_type = constants.POSTERIOR if use_posterior else constants.PRIOR
+    if dist_type not in self._inference_data.groups():
+      raise errors.NotFittedModelError(
+          f"sample_{dist_type}() must be called prior to calling"
+          " `control_contributions()`."
+      )
+
+    inputs = tensors.DataTensorsBuilder(
+        self.model_context
+    ).build_unscaled_inputs(
+        selected_geos=selected_geos, selected_times=selected_times
+    )
+    # The model is linear in the scaled control variables, so the scaled values
+    # are converted to outcome units once, and each draw of the coefficients
+    # only weights them. With dimensions `(n_geos, n_times, n_controls)`.
+    outcome_per_unit_coefficient = self.inverse_outcome(
+        controls_scaled, use_kpi=use_kpi, revenue_per_kpi=None
+    )
+    if inputs.geo_indices is not None:
+      outcome_per_unit_coefficient = backend.gather(
+          outcome_per_unit_coefficient, inputs.geo_indices, axis=0
+      )
+    if inputs.time_indices is not None:
+      outcome_per_unit_coefficient = backend.gather(
+          outcome_per_unit_coefficient, inputs.time_indices, axis=1
+      )
+
+    output_dims = "g" * (not aggregate_geos) + "t" * (not aggregate_times) + "c"
+    contributions = []
+    for dist_tensors in self._yield_batched_distribution_tensors(
+        param_list=[constants.GAMMA_GC],
+        use_posterior=use_posterior,
+        batch_size=batch_size,
+    ):
+      gamma_gc = dist_tensors.gamma_gc
+      if inputs.geo_indices is not None:
+        gamma_gc = backend.gather(gamma_gc, inputs.geo_indices, axis=-2)
+      contributions.append(
+          backend.einsum(
+              f"gtc,...gc->...{output_dims}",
+              outcome_per_unit_coefficient,
+              gamma_gc,
+          )
+      )
+    return backend.concatenate(contributions, axis=1)
+
   def compute_incremental_outcome_aggregate(
       self,
       use_posterior: bool,
