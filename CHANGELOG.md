@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Fix `BudgetOptimizer.optimize` reusing a supplied `optimization_grid` that
+    was created from different media, reach, frequency, spend, or revenue per
+    KPI values than the optimization data (for example, after changing media
+    units at fixed spend and dates). A new grid is now created, with a warning.
+
 *   Add `include_response_curves` to `MediaSummarySpec`. Set it to `False` to
     skip the response curve computation in `MarketingProcessor` when only the
     media summary metrics are needed.

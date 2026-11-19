@@ -2967,6 +2967,232 @@ class OptimizerAlgorithmTest(parameterized.TestCase):
         mock.call(**optimization_args),
     ])
 
+  def test_optimize_with_changed_media_same_spend_new_grid_created(self):
+    # Changing media units (i.e. CPM) while keeping spend and dates fixed
+    # changes the response curves, so a grid built on the original data must not
+    # be reused.
+    budget_optimizer = self.budget_optimizer_media_only
+    media = self.meridian_media_only.media_tensors.media
+    scale = np.ones(media.shape[-1])  # pyrefly: ignore[missing-attribute]
+    scale[0] = 2.0  # Channel 0 now buys twice the media for the same spend.
+    new_data = tensors.DataTensors(
+        media=backend.to_tensor(media * scale, dtype=backend.float_dtype)  # pyrefly: ignore[unsupported-operation]
+    )
+    gtol = 0.01
+    # Match the spend constraints `optimize` uses for a fixed budget, so the
+    # grid it rebuilds is comparable to `fresh_grid`.
+    grid_args = dict(
+        gtol=gtol,
+        spend_constraint_lower=c.SPEND_CONSTRAINT_DEFAULT_FIXED_BUDGET,
+        spend_constraint_upper=c.SPEND_CONSTRAINT_DEFAULT_FIXED_BUDGET,
+    )
+    stale_grid = budget_optimizer.create_optimization_grid(**grid_args)
+    fresh_grid = budget_optimizer.create_optimization_grid(
+        new_data=new_data, **grid_args
+    )
+    # Sanity check: the response curves really differ.
+    self.assertFalse(
+        np.allclose(
+            stale_grid.incremental_outcome_grid,
+            fresh_grid.incremental_outcome_grid,
+            equal_nan=True,
+        )
+    )
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+        )
+    )
+
+    with self.assertWarnsRegex(UserWarning, 'A new grid will be created'):
+      result = budget_optimizer.optimize(
+          new_data=new_data, optimization_grid=stale_grid, gtol=gtol
+      )
+
+    mock_create_optimization_grid.assert_called_once()
+    xr.testing.assert_allclose(
+        result.optimization_grid.grid_dataset, fresh_grid.grid_dataset
+    )
+
+  @parameterized.named_parameters(
+      # Same channel totals (so the same spend bounds), different flighting.
+      dict(
+          testcase_name='media_spend_flighting',
+          field=c.MEDIA_SPEND,
+          get_original=lambda mmm: mmm.media_tensors.media_spend,
+          transform=lambda x: np.flip(np.asarray(x), axis=-2),
+          expected_changed='media_spend',
+      ),
+      dict(
+          testcase_name='revenue_per_kpi',
+          field=c.REVENUE_PER_KPI,
+          get_original=lambda mmm: mmm.revenue_per_kpi,
+          transform=lambda x: np.asarray(x) * 1.5,
+          expected_changed='revenue_per_kpi',
+      ),
+  )
+  def test_optimize_with_changed_data_new_grid_created(
+      self, field, get_original, transform, expected_changed
+  ):
+    budget_optimizer = self.budget_optimizer_media_only
+    new_data = tensors.DataTensors(**{
+        field: backend.to_tensor(
+            transform(get_original(self.meridian_media_only)),
+            dtype=backend.float_dtype,
+        )
+    })
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(gtol=gtol)
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+        )
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning,
+        'Given optimization grid was created with different input data than'
+        f' the optimization was called with \\(changed: {expected_changed}\\)',
+    ):
+      budget_optimizer.optimize(
+          new_data=new_data, optimization_grid=grid, gtol=gtol
+      )
+
+    mock_create_optimization_grid.assert_called_once()
+
+  def test_optimize_with_changed_frequency_new_grid_created(self):
+    budget_optimizer = self.budget_optimizer_media_and_rf
+    rf_tensors = self.meridian_media_and_rf.rf_tensors
+    # Same impressions and spend, different reach / frequency split.
+    new_data = tensors.DataTensors(
+        reach=backend.to_tensor(
+            rf_tensors.reach / 2.0,  # pyrefly: ignore[unsupported-operation]
+            dtype=backend.float_dtype,
+        ),
+        frequency=backend.to_tensor(
+            rf_tensors.frequency * 2.0,  # pyrefly: ignore[unsupported-operation]
+            dtype=backend.float_dtype,
+        ),
+    )
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(
+        use_optimal_frequency=False, gtol=gtol
+    )
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+        )
+    )
+
+    with self.assertWarnsRegex(
+        UserWarning, '\\(changed: frequency, reach\\)'
+    ):
+      budget_optimizer.optimize(
+          new_data=new_data,
+          optimization_grid=grid,
+          use_optimal_frequency=False,
+          gtol=gtol,
+      )
+
+    mock_create_optimization_grid.assert_called_once()
+
+  def test_optimize_with_kpi_grid_ignores_revenue_per_kpi(self):
+    budget_optimizer = self.budget_optimizer_media_only
+    new_data = tensors.DataTensors(
+        revenue_per_kpi=backend.to_tensor(
+            self.meridian_media_only.revenue_per_kpi * 1.5,  # pyrefly: ignore[unsupported-operation]
+            dtype=backend.float_dtype,
+        )
+    )
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(use_kpi=True, gtol=gtol)
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+        )
+    )
+
+    budget_optimizer.optimize(
+        new_data=new_data, optimization_grid=grid, use_kpi=True, gtol=gtol
+    )
+
+    mock_create_optimization_grid.assert_not_called()
+
+  def test_optimize_with_equal_data_copy_reuses_grid(self):
+    budget_optimizer = self.budget_optimizer_media_only
+    media = np.array(self.meridian_media_only.media_tensors.media)
+    gtol = 0.01
+    grid = budget_optimizer.create_optimization_grid(
+        new_data=tensors.DataTensors(
+            media=backend.to_tensor(media, dtype=backend.float_dtype)
+        ),
+        gtol=gtol,
+    )
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+        )
+    )
+
+    with warnings.catch_warnings():
+      warnings.filterwarnings('error', message='.*A new grid will be created')
+      budget_optimizer.optimize(
+          new_data=tensors.DataTensors(
+              media=backend.to_tensor(media.copy(), dtype=backend.float_dtype)
+          ),
+          optimization_grid=grid,
+          gtol=gtol,
+      )
+
+    mock_create_optimization_grid.assert_not_called()
+
+  def test_optimize_with_grid_without_fingerprint_skips_data_check(self):
+    budget_optimizer = self.budget_optimizer_media_only
+    media = self.meridian_media_only.media_tensors.media
+    gtol = 0.01
+    # Grids created outside of `create_optimization_grid` (for example,
+    # deserialized ones) have no fingerprint, so their data can't be checked.
+    grid = dataclasses.replace(
+        budget_optimizer.create_optimization_grid(gtol=gtol),
+        _data_fingerprint=None,
+    )
+    mock_create_optimization_grid = self.enter_context(
+        mock.patch.object(
+            budget_optimizer,
+            'create_optimization_grid',
+            side_effect=budget_optimizer.create_optimization_grid,
+            autospec=True,
+        )
+    )
+
+    budget_optimizer.optimize(
+        new_data=tensors.DataTensors(
+            media=backend.to_tensor(
+                media * 2.0,  # pyrefly: ignore[unsupported-operation]
+                dtype=backend.float_dtype,
+            )
+        ),
+        optimization_grid=grid,
+        gtol=gtol,
+    )
+
+    mock_create_optimization_grid.assert_not_called()
+
   def test_optimize_with_none_grid_new_grid_created(self):
     budget_optimizer = self.budget_optimizer_media_and_rf
     mock_create_optimization_grid = self.enter_context(

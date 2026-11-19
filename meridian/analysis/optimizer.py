@@ -18,8 +18,10 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import math
 import os
+import types
 from typing import Any, TypeAlias, TypeVar
 import warnings
 
@@ -153,6 +155,12 @@ class OptimizationGrid:
   # TODO: Make it public when time-varying media effects are
   # released.
   _changepoint_effect: _ChangepointEffectArg | None = None
+  # Digests of the input data tensors this grid was computed from, keyed by
+  # tensor name (see `_fingerprint_grid_data`). Used to detect that a reused
+  # grid no longer matches the optimization data. `None` for grids that were
+  # not created by `BudgetOptimizer.create_optimization_grid` (for example,
+  # deserialized grids), in which case the input data is not checked.
+  _data_fingerprint: Mapping[str, str] | None = None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -1830,7 +1838,9 @@ class BudgetOptimizer:
         information. Grid creating is a time consuming part of optimization.
         Creating one grid and running various optimizations on it can save time.
         If `None` or grid doesn't match the optimization arguments, a new grid
-        will be created.
+        will be created. This includes the case where the grid was created with
+        different values of the media, reach, frequency, spend, or revenue per
+        KPI data than `new_data` (or the original model data).
 
     Returns:
       An `OptimizationResults` object containing optimized budget allocation
@@ -2266,6 +2276,22 @@ class BudgetOptimizer:
       )
       return False
 
+    grid_fingerprint = optimization_grid._data_fingerprint  # pylint: disable=protected-access
+    if grid_fingerprint is not None:
+      data_fingerprint = _fingerprint_grid_data(filled_data, use_kpi=use_kpi)
+      changed_fields = sorted(
+          name
+          for name in data_fingerprint.keys() | grid_fingerprint.keys()
+          if data_fingerprint.get(name) != grid_fingerprint.get(name)
+      )
+      if changed_fields:
+        warnings.warn(
+            'Given optimization grid was created with different input data'
+            ' than the optimization was called with (changed:'
+            f' {", ".join(changed_fields)}). A new grid will be created.'
+        )
+        return False
+
     n_channels = len(optimization_grid.channels)
     selected_times = _expand_selected_times(
         model_context=self._analyzer.model_context,
@@ -2539,6 +2565,7 @@ class BudgetOptimizer:
         selected_geos=selected_geos,
         selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
         _changepoint_effect=_changepoint_effect,
+        _data_fingerprint=_fingerprint_grid_data(filled_data, use_kpi=use_kpi),
     )
 
   def _create_grid_dataset(
@@ -3770,3 +3797,44 @@ def _expand_selected_times(
       start_date=start_date,
       end_date=end_date,
   )
+
+
+def _fingerprint_grid_data(
+    filled_data: tensors.DataTensors, *, use_kpi: bool
+) -> Mapping[str, str]:
+  """Computes per-tensor digests of the data an optimization grid depends on.
+
+  The incremental outcome grid depends on the values of the media, reach,
+  frequency, spend, and (for revenue) revenue per KPI tensors, as well as on the
+  time coordinates. Full tensors are hashed, not only the selected geos and
+  times, because carryover effects make the outcome depend on periods before the
+  selected start date. A change outside the selected window only causes an
+  unnecessary grid rebuild, never a stale grid.
+
+  Args:
+    filled_data: A `DataTensors` object with all `c.PERFORMANCE_DATA` and
+      `c.TIME` fields filled in, as returned by
+      `DataTensors.validate_and_fill_missing_data`.
+    use_kpi: Whether the grid is computed on KPI instead of revenue. If `True`,
+      `revenue_per_kpi` doesn't affect the grid and is excluded.
+
+  Returns:
+    A read-only mapping from tensor name to the hex SHA-256 digest of its dtype,
+    shape, and values.
+  """
+  fingerprint = {}
+  for name in c.PERFORMANCE_DATA + (c.TIME,):
+    if use_kpi and name == c.REVENUE_PER_KPI:
+      continue
+    value = getattr(filled_data, name)
+    digest = hashlib.sha256()
+    if value is None:
+      digest.update(b'None')
+    else:
+      array = np.asarray(value)
+      if name == c.TIME:
+        array = array.astype(str)
+      digest.update(f'{array.dtype.str}{array.shape}'.encode())
+      digest.update(np.ascontiguousarray(array).tobytes())
+    fingerprint[name] = digest.hexdigest()
+  return types.MappingProxyType(fingerprint)
