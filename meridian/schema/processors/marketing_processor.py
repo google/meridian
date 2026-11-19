@@ -451,15 +451,25 @@ class MarketingProcessor(
           use_kpi=True,
       )
 
-    # Note: baseline_summary_metrics() prefers computing revenue (scaled from
-    # generic KPI with `revenue_per_kpi` when defined) baseline outcome here.
-    # TODO: Baseline outcomes for both revenue and non-revenue
-    # KPI types should be computed, when possible.
-    baseline_outcome = self._analyzer.baseline_summary_metrics(
-        confidence_level=marketing_analysis_spec.confidence_level,
-        aggregate_times=media_summary_spec.aggregate_times,
-        selected_times=selected_times,
-    ).sel(distribution=constants.POSTERIOR)
+    # The baseline outcome is a property of the model's input data: it depends
+    # on the time-varying intercept and controls, which `new_data` cannot
+    # override, and `baseline_summary_metrics` has no `new_data` parameter. It
+    # is therefore only reported for analyses of the model's input data.
+    if media_summary_spec.new_data is None:
+      # Note: baseline_summary_metrics() prefers computing revenue (scaled from
+      # generic KPI with `revenue_per_kpi` when defined) baseline outcome here.
+      # TODO: Baseline outcomes for both revenue and non-revenue
+      # KPI types should be computed, when possible.
+      baseline_outcome = self._analyzer.baseline_summary_metrics(
+          confidence_level=marketing_analysis_spec.confidence_level,
+          aggregate_times=media_summary_spec.aggregate_times,
+          selected_times=selected_times,
+      ).sel(distribution=constants.POSTERIOR)
+    else:
+      baseline_outcome = None
+      warnings.warn(
+          "Baseline outcomes are not computed when `new_data` is provided."
+      )
 
     # Response curves are only computed for specs that aggregate times.
     if not media_summary_spec.include_response_curves:
@@ -467,6 +477,7 @@ class MarketingProcessor(
     elif media_summary_spec.aggregate_times:
       response_curve_spec = marketing_analysis_spec.response_curve_spec
       response_curves = self._analyzer.response_curves(
+          new_data=media_summary_spec.new_data,
           confidence_level=marketing_analysis_spec.confidence_level,
           use_posterior=True,
           selected_times=selected_times,
