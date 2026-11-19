@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-11-18
+
 *   Add `include_response_curves` to `MediaSummarySpec`. Set it to `False` to
     skip the response curve computation in `MarketingProcessor` when only the
     media summary metrics are needed.
@@ -821,4 +823,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [2.0.0]: https://github.com/google/meridian/releases/tag/v2.0.0
 [2.1.0]: https://github.com/google/meridian/releases/tag/v2.1.0
 [2.2.0]: https://github.com/google/meridian/releases/tag/v2.2.0
-[Unreleased]: https://github.com/google/meridian/compare/v2.2.0...HEAD
+[2.2.1]: https://github.com/google/meridian/releases/tag/v2.2.1
+[Unreleased]: https://github.com/google/meridian/compare/v2.2.1...HEAD
