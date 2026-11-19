@@ -6771,9 +6771,10 @@ class EDAEngineTest(
     )
     self.assertIsInstance(geo_artifact, eda_outcome.VIFArtifact)
 
-    # With perfect multicollinearity, VIF values should be inf.
-    self.assertTrue(np.isinf(overall_artifact.vif_da.values).all())
-    self.assertTrue(np.isinf(geo_artifact.vif_da.values).all())
+    # With perfect multicollinearity, VIF values should be inf (or clipped at
+    # ~1e15 in statsmodels >= 0.15).
+    self.assertTrue((overall_artifact.vif_da.values >= 1e14).all())
+    self.assertTrue((geo_artifact.vif_da.values >= 1e14).all())
 
   def test_check_geo_vif_has_correct_vif_value(self):
     model_context = context.ModelContext(
@@ -7047,8 +7048,9 @@ class EDAEngineTest(
     with self.subTest("national_artifact"):
       (national_artifact,) = outcome.analysis_artifacts
       self.assertIsInstance(national_artifact, eda_outcome.VIFArtifact)
-      # With perfect multicollinearity, VIF values should be inf.
-      self.assertTrue(np.isinf(national_artifact.vif_da.values).all())
+      # With perfect multicollinearity, VIF values should be inf (or clipped at
+      # ~1e15 in statsmodels >= 0.15).
+      self.assertTrue((national_artifact.vif_da.values >= 1e14).all())
 
   def test_check_national_vif_has_correct_vif_value(self):
     model_context = context.ModelContext(
