@@ -23,6 +23,13 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `model.load_mmm()` now raises a `ValueError` directing users to
+    `meridian.schema.serde.meridian_serde.load_meridian()` when given a
+    protobuf file (`.binpb`, `.txtpb`, or `.textproto`, case-insensitive), or
+    when unpickling the file raises `pickle.UnpicklingError`, `KeyError`, or
+    `EOFError`. Previously it failed with the raw unpickling error, such as
+    `KeyError: 10`.
+
 ## [2.2.1] - 2026-11-18
 
 *   Add `include_response_curves` to `MediaSummarySpec`. Set it to `False` to

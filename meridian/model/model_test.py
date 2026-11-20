@@ -14,6 +14,7 @@
 
 import dataclasses
 import os
+import pickle
 from unittest import mock
 
 from absl import flags
@@ -1219,6 +1220,48 @@ class ModelPersistenceTest(
         FileNotFoundError, "No such file or directory: this/path/does/not/exist"
     ):
       model.load_mmm("this/path/does/not/exist")
+
+  @parameterized.named_parameters(
+      dict(testcase_name="binpb", extension=".binpb"),
+      dict(testcase_name="binpb_uppercase", extension=".BINPB"),
+      dict(testcase_name="txtpb", extension=".txtpb"),
+      dict(testcase_name="textproto", extension=".textproto"),
+  )
+  def test_load_mmm_proto_extension_raises_value_error(self, extension: str):
+    proto_path = f"{self.file_path}{extension}"
+    with self.assertRaisesRegex(ValueError, "only supports pickled files"):
+      model.load_mmm(proto_path)
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="binary_proto_wire_tag_10",
+          payload=b"\x0a\x05hello",
+          expected_cause=KeyError,
+      ),
+      dict(
+          testcase_name="non_pickle_text_bytes",
+          payload=b"not a valid pickle payload",
+          expected_cause=KeyError,
+      ),
+      dict(
+          testcase_name="empty_file",
+          payload=b"",
+          expected_cause=EOFError,
+      ),
+      dict(
+          testcase_name="malformed_pickle",
+          payload=b"Sabc\n.",
+          expected_cause=pickle.UnpicklingError,
+      ),
+  )
+  def test_load_mmm_unpicklable_file_raises_value_error(
+      self, payload: bytes, expected_cause: type[Exception]
+  ):
+    with open(self.file_path, "wb") as f:
+      f.write(payload)
+    with self.assertRaisesRegex(ValueError, "Failed to unpickle model") as cm:
+      model.load_mmm(self.file_path)
+    self.assertIsInstance(cm.exception.__cause__, expected_cause)
 
   def test_save_and_load_warning(self):
     mmm = model.Meridian(input_data=self.input_data_with_media_and_rf)
