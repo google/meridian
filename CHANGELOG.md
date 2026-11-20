@@ -79,6 +79,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
     banner that the overall recommendation is based on the composite
     calibration score and that flagged criteria are labeled as contributors in
     the table.
+*   Fix `ValueError: The range [1, X] does not contain any of the available knot
+    lengths: [0]` in Automatic Knot Selection (AKS). The knot search may now
+    select no internal knots, in which case AKS returns a single knot
+    representing a common intercept across all time periods, instead of failing.
 
 ## [2.2.0] - 2026-11-05
 

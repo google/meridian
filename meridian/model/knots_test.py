@@ -203,6 +203,17 @@ class GetKnotInfoTest(parameterized.TestCase):
               [0.0, 0.0, 0.0, 1.0],
           ]),
       ),
+      dict(
+          testcase_name="empty_collection_and_national",
+          n_times=6,
+          knots_param=[],
+          is_national=True,
+          expected_n_knots=1,
+          expected_knot_locations=[0],
+          expected_weights=np.array([
+              [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+          ]),
+      ),
   )
   def test_sample_list_of_knots(
       self,
@@ -278,27 +289,21 @@ class GetKnotInfoTest(parameterized.TestCase):
           testcase_name="geo",
           is_national=False,
           n_times=5,
-          expected_n_knots=5,
-          expected_knot_locations=[0, 1, 2, 3, 4],
       ),
       dict(
           testcase_name="national",
           is_national=True,
           n_times=5,
-          expected_n_knots=1,
-          expected_knot_locations=[0],
       ),
   )
-  def test_get_knot_info_aks_returns_empty_falls_back_to_default_knots(
+  def test_get_knot_info_aks_returns_single_knot_uses_it(
       self,
       is_national,
       n_times,
-      expected_n_knots,
-      expected_knot_locations,
   ):
-    """Tests that if AKS returns empty knots, we fall back to default knots."""
+    """Tests that a single knot from AKS is used as a common intercept."""
     mock_result = mock.create_autospec(knots.AKSResult, instance=True)
-    mock_result.knots = np.array([], dtype=int)
+    mock_result.knots = np.array([0], dtype=int)
     mock_aks = self.enter_context(
         mock.patch.object(
             knots.AKS, "automatic_knot_selection", autospec=True, spec_set=True
@@ -316,8 +321,9 @@ class GetKnotInfoTest(parameterized.TestCase):
         is_national=is_national,
     )
 
-    self.assertEqual(info.n_knots, expected_n_knots)
-    np.testing.assert_array_equal(info.knot_locations, expected_knot_locations)
+    self.assertEqual(info.n_knots, 1)
+    np.testing.assert_array_equal(info.knot_locations, [0])
+    np.testing.assert_array_equal(info.weights, np.ones((1, n_times)))
 
   def test_get_knot_info_aks_returns_knots_uses_them(self):
     mock_result = mock.create_autospec(
@@ -786,6 +792,67 @@ class AKSTest(parameterized.TestCase):
         actual_knot_info.weights, expected_knot_info.weights
     )
 
+  def test_aks_no_internal_knots_selected_returns_single_knot(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=3,
+            n_times=50,
+            n_media_times=50,
+            n_controls=2,
+            n_media_channels=2,
+        ),
+        "non_revenue",
+    )
+    # A large base penalty forces all internal knots to be dropped.
+    huge_penalty = np.array([1e6, 1e7, 1e8])
+    aks_obj = knots.AKS(data)
+    result = aks_obj.automatic_knot_selection(base_penalty=huge_penalty)
+    np.testing.assert_array_equal(result.knots, [0])
+
+  def test_aks_explicit_zero_min_and_max_internal_knots(self):
+    # With n_times=10 and 7 features, len(knots)=7 so default max_internal_knots
+    # would be 0 (< 1) and raise, whereas explicit (0, 0) allows the 0-knot
+    # fallback used by callers.
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=2,
+            n_times=10,
+            n_media_times=10,
+            n_controls=2,
+            n_media_channels=5,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    result = aks_obj.automatic_knot_selection(
+        base_penalty=np.array([1e6, 1e7, 1e8]),
+        min_internal_knots=0,
+        max_internal_knots=0,
+    )
+    np.testing.assert_array_equal(result.knots, [0])
+
+  def test_aks_explicit_max_zero_less_than_min_raises(self):
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=3,
+            n_times=50,
+            n_media_times=50,
+            n_controls=2,
+            n_media_channels=2,
+        ),
+        "non_revenue",
+    )
+    aks_obj = knots.AKS(data)
+    with self.assertRaisesRegex(
+        ValueError,
+        "The maximum number of internal knots cannot be less than the minimum"
+        " number of internal knots.",
+    ):
+      aks_obj.automatic_knot_selection(
+          min_internal_knots=1,
+          max_internal_knots=0,
+      )
+
   def test_aspline(self):
     x = np.array([0, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15])
     y = np.array([10, 2, 3, 4, 50, 6, 30, 4, 5, 6, 3, 4, 5, 6, 6])
@@ -966,6 +1033,12 @@ class AKSTest(parameterized.TestCase):
     )
 
   @parameterized.named_parameters(
+      dict(
+          testcase_name="min_equals_max_zero",
+          min_internal_knots=0,
+          max_internal_knots=0,
+          expected_knots=[0],
+      ),
       dict(
           testcase_name="min_equals_max",
           min_internal_knots=8,

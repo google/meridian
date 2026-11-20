@@ -33,6 +33,7 @@ from meridian.common import errors
 from meridian.data import input_data as meridian_input_data
 from meridian.data import test_utils
 from meridian.model import context
+from meridian.model import knots
 from meridian.model import model
 from meridian.model import prior_distribution
 from meridian.model import spec
@@ -47,6 +48,7 @@ from meridian.schema.serde import eda_spec as eda_spec_serde
 from meridian.schema.serde import function_registry as function_registry_utils
 from meridian.schema.serde import hyperparameters
 from meridian.schema.serde import inference_data
+from meridian.schema.serde import legacy_aks_v2_2_0
 from meridian.schema.serde import marketing_data
 from meridian.schema.serde import meridian_serde as serde
 from meridian.schema.serde import test_data
@@ -1585,6 +1587,121 @@ class MeridianSerdeTest(parameterized.TestCase):
           (1, deserialized_model.model_context.n_times),
       )
 
+  @parameterized.named_parameters(
+      dict(testcase_name='just_above_v1_7_1', mock_version='1.7.2'),
+      dict(testcase_name='v1_8_0', mock_version='1.8.0'),
+      dict(testcase_name='v2_0_0', mock_version='2.0.0'),
+      dict(testcase_name='v2_1_0', mock_version='2.1.0'),
+      dict(testcase_name='v2_2_0', mock_version='2.2.0'),
+  )
+  def test_deserialization_of_legacy_aks_v2_2_0_model(self, mock_version):
+    """Tests that versions in (1.7.1, 2.2.0] route to the v2.2.0 snapshot."""
+    meridian_model = meridian_pb.MeridianModel(
+        model_version=mock_version,
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+        eda_spec=eda_spec_pb2.EDASpec(),
+    )
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    mmm_kernel = kernel_pb.MmmKernel(
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+        model=any_model,
+    )
+
+    mock_hyperparameters_model_spec = spec.ModelSpec(
+        enable_aks=True, knots=None
+    )
+    mock_prior_distributions = prior_distribution.PriorDistribution()
+    with (
+        mock.patch.object(
+            hyperparameters.HyperparametersSerde,
+            'deserialize',
+            autospec=True,
+            return_value=mock_hyperparameters_model_spec,
+        ),
+        mock.patch.object(
+            distribution.DistributionSerde,
+            'deserialize',
+            autospec=True,
+            return_value=mock_prior_distributions,
+        ),
+        mock.patch(
+            'meridian.schema.serde.legacy_aks.get_legacy_knots',
+            autospec=True,
+        ) as mock_get_legacy_knots,
+        mock.patch(
+            'meridian.schema.serde.legacy_aks_v1_7_1.get_legacy_knots',
+            autospec=True,
+        ) as mock_get_legacy_knots_v1_7_1,
+        mock.patch(
+            'meridian.schema.serde.legacy_aks_v2_2_0.get_legacy_knots',
+            autospec=True,
+            return_value=[0, 1],
+        ) as mock_get_legacy_knots_v2_2_0,
+    ):
+      deserialized_model = self.serde.deserialize(mmm_kernel)
+      mock_get_legacy_knots_v2_2_0.assert_called_once()
+      mock_get_legacy_knots.assert_not_called()
+      mock_get_legacy_knots_v1_7_1.assert_not_called()
+      self.assertIn('knot_info', deserialized_model.model_context.__dict__)
+      np.testing.assert_array_equal(
+          deserialized_model.model_context.knot_info.knot_locations, [0, 1]
+      )
+
+  def test_deserialization_of_legacy_aks_v2_2_0_model_single_knot(self):
+    """Tests that a single legacy knot yields a common intercept."""
+    mock_version = '2.2.0'
+
+    meridian_model = meridian_pb.MeridianModel(
+        model_version=mock_version,
+        hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
+        prior_tfp_distributions=meridian_pb.PriorTfpDistributions(),
+        inference_data=meridian_pb.InferenceData(),
+        eda_spec=eda_spec_pb2.EDASpec(),
+    )
+    any_model = any_pb2.Any()
+    any_model.Pack(meridian_model)
+    mmm_kernel = kernel_pb.MmmKernel(
+        marketing_data=test_data.MOCK_PROTO_MEDIA_PAID_GRANULAR_NOT_LAGGED,
+        model=any_model,
+    )
+
+    mock_hyperparameters_model_spec = spec.ModelSpec(
+        enable_aks=True, knots=None
+    )
+    mock_prior_distributions = prior_distribution.PriorDistribution()
+    with (
+        mock.patch.object(
+            hyperparameters.HyperparametersSerde,
+            'deserialize',
+            autospec=True,
+            return_value=mock_hyperparameters_model_spec,
+        ),
+        mock.patch.object(
+            distribution.DistributionSerde,
+            'deserialize',
+            autospec=True,
+            return_value=mock_prior_distributions,
+        ),
+        mock.patch(
+            'meridian.schema.serde.legacy_aks_v2_2_0.get_legacy_knots',
+            autospec=True,
+            return_value=[0],
+        ) as mock_get_legacy_knots,
+    ):
+      deserialized_model = self.serde.deserialize(mmm_kernel)
+      mock_get_legacy_knots.assert_called_once()
+      self.assertIn('knot_info', deserialized_model.model_context.__dict__)
+      np.testing.assert_array_equal(
+          deserialized_model.model_context.knot_info.knot_locations, [0]
+      )
+      self.assertEqual(
+          deserialized_model.model_context.knot_info.weights.shape,
+          (1, deserialized_model.model_context.n_times),
+      )
+
   def test_deserialization_of_legacy_aks_model_fitted(self):
     mock_version = '1.6.0'  # Older than 1.7.0
 
@@ -1706,7 +1823,8 @@ class MeridianSerdeTest(parameterized.TestCase):
         self.serde.deserialize(mmm_kernel)
 
   def test_deserialization_of_current_aks_model(self):
-    mock_version = '1.8.0'  # Newer than 1.7.0
+    # Pinned above every legacy AKS cutoff, independent of `version.py`.
+    mock_version = str(serde._LEGACY_AKS_V2_2_0_CUTOFF_VERSION.bump_minor())  # pylint: disable=protected-access
 
     meridian_model = meridian_pb.MeridianModel(
         model_version=mock_version,
@@ -1739,10 +1857,21 @@ class MeridianSerdeTest(parameterized.TestCase):
         ),
         mock.patch(
             'meridian.schema.serde.legacy_aks.get_legacy_knots',
+            autospec=True,
         ) as mock_get_legacy_knots,
+        mock.patch(
+            'meridian.schema.serde.legacy_aks_v1_7_1.get_legacy_knots',
+            autospec=True,
+        ) as mock_get_legacy_knots_v1_7_1,
+        mock.patch(
+            'meridian.schema.serde.legacy_aks_v2_2_0.get_legacy_knots',
+            autospec=True,
+        ) as mock_get_legacy_knots_v2_2_0,
     ):
       deserialized_model = self.serde.deserialize(mmm_kernel)
       mock_get_legacy_knots.assert_not_called()
+      mock_get_legacy_knots_v1_7_1.assert_not_called()
+      mock_get_legacy_knots_v2_2_0.assert_not_called()
       self.assertNotIn('knot_info', deserialized_model.model_context.__dict__)
 
   def test_deserialization_of_legacy_no_aks_model(self):
@@ -1784,6 +1913,124 @@ class MeridianSerdeTest(parameterized.TestCase):
       deserialized_model = self.serde.deserialize(mmm_kernel)
       mock_get_legacy_knots.assert_not_called()
       self.assertNotIn('knot_info', deserialized_model.model_context.__dict__)
+
+  def test_save_load_round_trip_with_aks(self):
+    """Tests that AKS knots survive a save/load cycle, they are recomputed."""
+    flags.FLAGS.mark_as_parsed()
+    file_path = os.path.join(self.create_tempdir().full_path, 'aks.binpb')
+    input_data = test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=3,
+        n_times=20,
+        n_media_times=20,
+        n_controls=1,
+        n_media_channels=2,
+        seed=1,
+    )
+    meridian_model = model.Meridian(
+        input_data=input_data,
+        model_spec=spec.ModelSpec(enable_aks=True),
+    )
+    expected_knot_info = meridian_model.model_context.knot_info
+
+    serde.save_meridian(meridian_model, file_path)
+    loaded_knot_info = serde.load_meridian(file_path).model_context.knot_info
+
+    self.assertEqual(loaded_knot_info.n_knots, expected_knot_info.n_knots)
+    np.testing.assert_array_equal(
+        loaded_knot_info.knot_locations, expected_knot_info.knot_locations
+    )
+    np.testing.assert_allclose(
+        loaded_knot_info.weights, expected_knot_info.weights
+    )
+
+  def test_save_load_round_trip_with_aks_no_internal_knots(self):
+    """Tests that a single knot from AKS survives a save/load cycle."""
+    flags.FLAGS.mark_as_parsed()
+    file_path = os.path.join(
+        self.create_tempdir().full_path, 'aks_single_knot.binpb'
+    )
+    input_data = test_utils.sample_input_data_non_revenue_revenue_per_kpi(
+        n_geos=3,
+        n_times=20,
+        n_media_times=20,
+        n_controls=1,
+        n_media_channels=2,
+        seed=1,
+    )
+    with mock.patch.object(
+        knots.AKS, '_BASE_PENALTY', np.array([1e6, 1e7, 1e8])
+    ):
+      meridian_model = model.Meridian(
+          input_data=input_data,
+          model_spec=spec.ModelSpec(enable_aks=True),
+      )
+      self.assertEqual(meridian_model.model_context.knot_info.n_knots, 1)
+
+      # Pins a version above every legacy AKS cutoff so that loading takes
+      # the current AKS path, independent of `version.py`.
+      pinned_version = serde._LEGACY_AKS_V2_2_0_CUTOFF_VERSION.bump_minor()  # pylint: disable=protected-access
+      serialized_kernel = serde.MeridianSerde().serialize(
+          meridian_model, meridian_version=pinned_version
+      )
+      with open(file_path, 'wb') as f:
+        f.write(serialized_kernel.SerializeToString())
+      loaded_knot_info = serde.load_meridian(file_path).model_context.knot_info
+
+    self.assertEqual(loaded_knot_info.n_knots, 1)
+    np.testing.assert_array_equal(loaded_knot_info.knot_locations, [0])
+    self.assertEqual(
+        loaded_knot_info.weights.shape,
+        (1, len(input_data.time)),
+    )
+
+  def test_legacy_aks_v2_2_0_no_internal_knots_still_raises(self):
+    """Tests that the frozen v2.2.0 snapshot preserves the original failure.
+
+    Before the single-knot fix, AKS floored its search at one internal knot and
+    raised when every internal knot was dropped. Models saved at or below 2.2.0
+    were fit with that algorithm, so the snapshot must keep raising rather than
+    silently returning the single knot the current algorithm would select.
+    """
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=3,
+            n_times=50,
+            n_media_times=50,
+            n_controls=2,
+            n_media_channels=2,
+        ),
+        'non_revenue',
+    )
+    # A large base penalty forces all internal knots to be dropped.
+    huge_penalty = np.array([1e6, 1e7, 1e8])
+
+    with self.assertRaisesRegex(
+        ValueError,
+        r'does not contain any of the available knot lengths',
+    ):
+      legacy_aks_v2_2_0.AKS(data).automatic_knot_selection(
+          base_penalty=huge_penalty
+      )
+
+  def test_legacy_aks_v2_2_0_matches_current_aks_when_internal_knots_exist(
+      self,
+  ):
+    """Tests that the snapshot only diverges in the no-internal-knots case."""
+    data = test_utils.sample_input_data_from_dataset(
+        test_utils.random_dataset(
+            n_geos=3,
+            n_times=50,
+            n_media_times=50,
+            n_controls=2,
+            n_media_channels=2,
+        ),
+        'non_revenue',
+    )
+
+    legacy_knots = legacy_aks_v2_2_0.AKS(data).automatic_knot_selection().knots
+    current_knots = knots.AKS(data).automatic_knot_selection().knots
+
+    np.testing.assert_array_equal(legacy_knots, current_knots)
 
 
 class HoldoutRoundTripTest(parameterized.TestCase):

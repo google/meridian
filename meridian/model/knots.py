@@ -28,7 +28,6 @@ import numpy as np
 from scipy import interpolate
 from statsmodels.regression import linear_model
 
-
 __all__ = [
     'KnotInfo',
     'compute_knot_rotation_matrix',
@@ -261,9 +260,10 @@ def get_knot_info(
       period. When `knots` is an integer, then there are knots with locations
       equally spaced across the time periods (including knots at zero and
       `(n_times - 1)`. When `knots` is `1`, there is a single common regression
-      coefficient used for all time periods. If `knots` is `None`, then the
-      numbers of knots used is equal to the number of time periods. This is
-      equivalent to each time period having its own regression coefficient.
+      coefficient used for all time periods. If `knots` is `None` or an empty
+      collection, then the numbers of knots used is equal to the number of time
+      periods. This is equivalent to each time period having its own regression
+      coefficient.
     enable_aks: A boolean indicating whether to use the Automatic Knot Selection
       algorithm to select optimal number of knots for running the model instead
       of the default 1 for national and n_times for non-national models.
@@ -283,9 +283,9 @@ def get_knot_info(
       raise ValueError(
           'If enable_aks is true then input data must be provided.'
       )
-    else:
-      aks = AKS(data)
-      knots = aks.automatic_knot_selection().knots
+    # `automatic_knot_selection` always returns at least one knot, so the
+    # fallback for an empty collection below is never reached through AKS.
+    knots = AKS(data).automatic_knot_selection().knots
   if isinstance(knots, int):
     if knots < 1:
       raise ValueError('If knots is an integer, it must be at least 1.')
@@ -342,7 +342,7 @@ class AKS:
   def automatic_knot_selection(
       self,
       base_penalty: np.ndarray | None = None,
-      min_internal_knots: int = 1,
+      min_internal_knots: int = 0,
       max_internal_knots: int | None = None,
       required_knots: Collection[int] | None = None,
       excluded_knots: Collection[int] | None = None,
@@ -353,7 +353,12 @@ class AKS:
     Args:
       base_penalty: A vector of positive penalty values. The adaptive spline
         regression is performed for every value of penalty.
-      min_internal_knots: The minimum number of internal knots. Defaults to 1.
+      min_internal_knots: The minimum number of internal knots considered by
+        the knot search. Defaults to 0, which allows candidates with no
+        internal knots; such a candidate is mapped to a single knot (see
+        `Returns`). At least one initial candidate knot is always required (and
+        at least one internal knot of degrees of freedom when
+        `max_internal_knots` is None), regardless of this value.
       max_internal_knots: The maximum number of internal knots. If None, this
         value is calculated as the number of initial knots minus the total count
         of all treatment and control variables. Otherwise, the user-provided
@@ -369,9 +374,11 @@ class AKS:
         pool, leaving only the required knots and those to the right of them.
 
     Returns:
-      Selected knots and the corresponding B-spline model. If at least one knot
-      is selected, boundary knots (min and max time) are added to ensure full
-      time coverage.
+      Selected knots and the corresponding B-spline model. At least one knot is
+      always returned. If at least one internal knot is selected, boundary knots
+      (min and max time) are added to ensure full time coverage. If no internal
+      knots are selected, a single knot at the start time is returned,
+      representing a flat line, that is a common intercept for all time periods.
 
     Raises:
       ValueError: If the same knot is both required and excluded.
@@ -479,14 +486,16 @@ class AKS:
     )
 
     selected_knots = knots_sel[opt_idx]
+    start_knot = int(x.min())
     if selected_knots.size > 0:
-      start_knot = int(x.min())
       end_knot = int(x.max())
       selected_knots = np.unique(
           np.concatenate((selected_knots, [start_knot, end_knot]))
       )
+    else:
+      selected_knots = np.array([start_knot])
 
-    return AKSResult(selected_knots, model[opt_idx])
+    return AKSResult(selected_knots, model[opt_idx])  # pyrefly: ignore[bad-argument-type]
 
   def _get_bspline_matrix(self, x, knots):
     """Replaces patsy.highlevel.dmatrix('bs(...)', ...)"""
@@ -541,7 +550,7 @@ class AKS:
   def _calculate_and_validate_max_internal_knots(
       self,
       knots: np.ndarray,
-      min_internal_knots: int = 1,
+      min_internal_knots: int = 0,
       max_internal_knots: int | None = None,
   ) -> int:
     """Calculates the max internal knots, and validates the range.
@@ -567,13 +576,14 @@ class AKS:
         ]
     )
 
-    if max_internal_knots is None:
-      max_internal_knots = len(knots) - n_features
-    if min_internal_knots > len(knots):
+    if max(1, min_internal_knots) > len(knots):
       raise ValueError(
           'The minimum number of internal knots cannot be greater than the'
           ' total number of initial knots.'
       )
+    if max_internal_knots is None:
+      max_internal_knots = len(knots) - n_features
+      min_internal_knots = max(1, min_internal_knots)
     if max_internal_knots < min_internal_knots:
       raise ValueError(
           'The maximum number of internal knots cannot be less than the minimum'
@@ -652,7 +662,7 @@ class AKS:
 
     is_required = np.isin(knots, required_knots)  # pyrefly: ignore[bad-argument-type]
     # Setting weight to 1.0 penalizes the required knots according to
-    # non-adpative ridge regression.
+    # non-adaptive ridge regression.
     w[is_required] = 1.0
 
     index_penalty = 0

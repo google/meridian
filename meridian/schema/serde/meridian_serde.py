@@ -64,6 +64,7 @@ from meridian.schema.serde import hyperparameters
 from meridian.schema.serde import inference_data
 from meridian.schema.serde import legacy_aks
 from meridian.schema.serde import legacy_aks_v1_7_1
+from meridian.schema.serde import legacy_aks_v2_2_0
 from meridian.schema.serde import marketing_data
 from meridian.schema.serde import serde
 import semver
@@ -123,6 +124,7 @@ _VERSION_INFO = semver.VersionInfo.parse(meridian.__version__)
 _SCHEMA_VERSION_INFO = semver.VersionInfo.parse(_get_schema_version())
 _LEGACY_AKS_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.0')
 _LEGACY_AKS_V1_7_1_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.1')
+_LEGACY_AKS_V2_2_0_CUTOFF_VERSION = semver.VersionInfo.parse('2.2.0')
 
 
 FunctionRegistry = function_registry_utils.FunctionRegistry
@@ -531,6 +533,13 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         )
       elif serialized_version <= _LEGACY_AKS_V1_7_1_CUTOFF_VERSION:
         legacy_knots = legacy_aks_v1_7_1.get_legacy_knots(
+            deserialized_marketing_data, loaded_mmm.is_national
+        )
+        loaded_mmm.model_context._inject_legacy_knot_info_for_serde(  # pylint: disable=protected-access
+            legacy_knots
+        )
+      elif serialized_version <= _LEGACY_AKS_V2_2_0_CUTOFF_VERSION:
+        legacy_knots = legacy_aks_v2_2_0.get_legacy_knots(
             deserialized_marketing_data, loaded_mmm.is_national
         )
         loaded_mmm.model_context._inject_legacy_knot_info_for_serde(  # pylint: disable=protected-access
