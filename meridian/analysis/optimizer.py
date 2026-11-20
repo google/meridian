@@ -18,6 +18,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 import contextlib
 import dataclasses
 import functools
+import hashlib
 import math
 import os
 from typing import Any, TypeAlias, TypeVar
@@ -64,6 +65,21 @@ _ChangepointEffectArg: TypeAlias = changepoint_effects._EffectOrIntervals  # pyl
 # Relative tolerance (with respect to the maximum absolute incremental outcome
 # of a channel) used when checking whether a response curve is monotonic.
 _MONOTONICITY_RTOL = 1e-5
+
+
+def _get_optimization_data_fingerprint(data: tensors.DataTensors) -> str:
+  """Hashes the filled scenario inputs without retaining copies of tensors."""
+  digest = hashlib.sha256()
+  for name in c.PERFORMANCE_DATA + (c.TIME,):
+    value = getattr(data, name)
+    digest.update(name.encode())
+    if value is None:
+      digest.update(b'None')
+      continue
+    array = np.ascontiguousarray(value)
+    digest.update(str((array.dtype.str, array.shape)).encode())
+    digest.update(memoryview(array).cast('B'))
+  return digest.hexdigest()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -153,6 +169,9 @@ class OptimizationGrid:
   # TODO: Make it public when time-varying media effects are
   # released.
   _changepoint_effect: _ChangepointEffectArg | None = None
+  # Fingerprint the filled inputs, not just explicitly supplied overrides, so
+  # implicit and explicit historical data can share a grid safely.
+  _data_fingerprint: str | None = None
 
   @property
   def grid_dataset(self) -> xr.Dataset:
@@ -2266,6 +2285,22 @@ class BudgetOptimizer:
       )
       return False
 
+    if optimization_grid._data_fingerprint is None:  # pylint: disable=protected-access
+      warnings.warn(
+          'Given optimization grid has no scenario data fingerprint. A new'
+          ' grid will be created.'
+      )
+      return False
+    if (
+        _get_optimization_data_fingerprint(filled_data)
+        != optimization_grid._data_fingerprint  # pylint: disable=protected-access
+    ):
+      warnings.warn(
+          'Given optimization grid was created with different scenario data.'
+          ' A new grid will be created.'
+      )
+      return False
+
     n_channels = len(optimization_grid.channels)
     selected_times = _expand_selected_times(
         model_context=self._analyzer.model_context,
@@ -2539,6 +2574,7 @@ class BudgetOptimizer:
         selected_geos=selected_geos,
         selected_times=selected_times,  # pyrefly: ignore[bad-argument-type]
         _changepoint_effect=_changepoint_effect,
+        _data_fingerprint=_get_optimization_data_fingerprint(filled_data),
     )
 
   def _create_grid_dataset(
