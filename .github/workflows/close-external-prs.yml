@@ -1,0 +1,54 @@
+name: Close External Pull Requests
+
+on:
+  # `pull_request_target` is needed because PRs from forks only get a read-only
+  # GITHUB_TOKEN under `pull_request`. This workflow never checks out or runs
+  # PR code and never interpolates untrusted PR fields into shell commands, so
+  # `pull_request_target` code-execution risks do not apply.
+  pull_request_target:  # zizmor: ignore[dangerous-triggers]
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  close-external-pr:
+    name: Close external pull request
+    # Only act on external PRs to google/meridian; skip org members,
+    # collaborators, same-repo branches, and Copybara/bot PRs.
+    if: >-
+      github.repository == 'google/meridian' &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association) &&
+      github.event.pull_request.user.type != 'Bot' &&
+      github.event.pull_request.user.login != 'copybara-service' &&
+      github.event.pull_request.user.login != 'copybara-service[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Comment on and close external pull request
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pullNumber = context.payload.pull_request.number;
+            const body = [
+              "Thank you for your interest in Meridian! We don't accept external pull requests because Meridian is developed internally and mirrored to GitHub, so pull requests can't be merged here.",
+              "",
+              "Instead, please open an [issue](https://github.com/google/meridian/issues) to report a bug or propose a change, or start a thread in [Discussions](https://github.com/google/meridian/discussions) for feature requests or usage questions. See [CONTRIBUTING.md](https://github.com/google/meridian/blob/main/CONTRIBUTING.md) for more details.",
+            ].join("\n");
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: pullNumber,
+              body,
+            });
+            await github.rest.pulls.update({
+              owner,
+              repo,
+              pull_number: pullNumber,
+              state: "closed",
+            });
