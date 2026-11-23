@@ -2109,6 +2109,7 @@ class MediaSummaryTest(parameterized.TestCase):
             c.EFFECTIVENESS,
             c.MROI,
             c.CPIK,
+            c.MCPIK,
         ],
     )
 
@@ -2135,6 +2136,7 @@ class MediaSummaryTest(parameterized.TestCase):
             summary_text.PCT_CONTRIBUTION_COL,
             c.EFFECTIVENESS,
             c.CPIK,
+            c.MCPIK,
         ],
     )
 
@@ -2155,6 +2157,34 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertTrue(
         all(currency in pct for pct in df[summary_text.INC_OUTCOME_COL])
     )
+    self.assertTrue(all(currency in cpik for cpik in df[c.CPIK]))
+    channel_rows = df[c.CHANNEL] != c.ALL_CHANNELS
+    self.assertTrue(
+        all(currency in mcpik for mcpik in df[c.MCPIK][channel_rows])
+    )
+    # mCPIK is not defined for "All Channels": the `NaN` values are reported
+    # without the currency symbol.
+    self.assertTrue(
+        all(mcpik == "nan (nan, nan)" for mcpik in df[c.MCPIK][~channel_rows])
+    )
+
+  @parameterized.named_parameters(("cpik", c.CPIK), ("mcpik", c.MCPIK))
+  def test_media_summary_summary_table_cost_per_kpi_uses_median(
+      self, metric: str
+  ):
+    df = self.media_summary_revenue.summary_table()
+    values = self.mock_paid_media_metrics[metric]
+    expected_median = values.sel(metric=c.MEDIAN, distribution=c.PRIOR).values[
+        0
+    ]
+    expected_ci_lo = values.sel(metric=c.CI_LO, distribution=c.PRIOR).values[0]
+    expected_ci_hi = values.sel(metric=c.CI_HI, distribution=c.PRIOR).values[0]
+    # `summary_table` prints one decimal digit if any reported value is < 1.
+    digits = 1 if abs(values.drop_sel(metric=c.MEAN)).min() < 1 else 0
+    median = f"${expected_median:,.{digits}f}"
+    ci_lo = f"${expected_ci_lo:,.{digits}f}"
+    ci_hi = f"${expected_ci_hi:,.{digits}f}"
+    self.assertEqual(df[metric][0], f"{median} ({ci_lo}, {ci_hi})")
 
   def test_media_summary_summary_table_format_monetary_with_currency_code(self):
     with mock.patch.object(

@@ -3680,6 +3680,10 @@ def generate_paid_summary_metrics() -> xr.Dataset:
   effectiveness = np.random.lognormal(1, 1, size=shape)
   pct_of_contribution = np.random.randint(low=0, high=50, size=shape)
   pct_of_impressions = np.random.randint(low=0, high=100, size=len(channel))
+  # Drawn last to keep the seeded values of the other variables unchanged.
+  mcpik = np.random.lognormal(0, 1, size=shape)
+  # Like the analyzer, mCPIK is not reported for the aggregate "All Channels".
+  mcpik[-1] = np.nan
 
   return xr.Dataset(
       data_vars={
@@ -3711,6 +3715,10 @@ def generate_paid_summary_metrics() -> xr.Dataset:
           c.CPIK: (
               [c.CHANNEL, c.METRIC, c.DISTRIBUTION],
               cpik,
+          ),
+          c.MCPIK: (
+              [c.CHANNEL, c.METRIC, c.DISTRIBUTION],
+              mcpik,
           ),
       },
       coords={

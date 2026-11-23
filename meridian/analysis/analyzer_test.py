@@ -3866,9 +3866,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         include_posterior=use_posterior,
     )
 
-    self.assertEqual(
-        list(actual[constants.DISTRIBUTION].values), [dist_type]
-    )
+    self.assertEqual(list(actual[constants.DISTRIBUTION].values), [dist_type])
     xr.testing.assert_allclose(actual, expected)
 
   def test_summary_metrics_no_distribution_raises_exception(self):
@@ -4303,11 +4301,136 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     )
     backend_test_utils.assert_allclose(actual, expected)
 
+  @parameterized.named_parameters(
+      dict(testcase_name="revenue", use_kpi=False),
+      dict(testcase_name="kpi", use_kpi=True),
+  )
+  def test_summary_metrics_mcpik_is_per_draw_marginal_spend_per_kpi(
+      self, use_kpi: bool
+  ):
+    delta = 0.01
+    media_summary = self.analyzer.summary_metrics(
+        use_kpi=use_kpi,
+        marginal_roi_by_reach=False,
+        marginal_roi_incremental_increase=delta,
+        include_prior=False,
+    )
+    paid_channels = list(self.input_data.get_all_paid_channels())
+
+    # mCPIK is computed per draw as the spend increase divided by the marginal
+    # incremental KPI, under the same perturbation as mROI.
+    marginal_kpi = self.analyzer.incremental_outcome(
+        use_kpi=True,
+        include_non_paid_channels=False,
+        by_reach=False,
+        scaling_factor0=1,
+        scaling_factor1=1 + delta,
+    )
+    total_spend = self.analyzer.filter_and_aggregate_geos_and_times(
+        self.meridian.total_spend
+    )
+    mcpik_draws = np.array(total_spend) * delta / np.array(marginal_kpi)
+    expected = analyzer.get_central_tendency_and_ci(
+        mcpik_draws, include_median=True
+    )
+
+    actual = media_summary.mcpik.sel(
+        channel=paid_channels, distribution=constants.POSTERIOR
+    )
+    backend_test_utils.assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
+
+  def test_summary_metrics_mcpik_mean_is_not_inverted_mroi_mean(self):
+    media_summary = self.analyzer.summary_metrics(
+        use_kpi=True, include_prior=False
+    )
+    paid_channels = list(self.input_data.get_all_paid_channels())
+
+    mcpik_mean = media_summary.mcpik.sel(
+        channel=paid_channels, metric=constants.MEAN
+    )
+    inverted_mroi_mean = 1 / media_summary.mroi.sel(
+        channel=paid_channels, metric=constants.MEAN
+    )
+    # The mean of a per-draw reciprocal differs from the reciprocal of the
+    # mean, which is why `mcpik` is reported rather than derived from `mroi`.
+    self.assertFalse(np.allclose(mcpik_mean.values, inverted_mroi_mean.values))
+
+  def test_summary_metrics_mcpik_is_nan_for_all_channels(self):
+    media_summary = self.analyzer.summary_metrics(include_prior=False)
+
+    self.assertTrue(
+        np.all(
+            np.isnan(media_summary.mcpik.sel(channel=constants.ALL_CHANNELS))
+        )
+    )
+
+  def test_summary_metrics_mcpik_revenue_kpi_reuses_mroi_counterfactual(
+      self,
+  ):
+    input_data = data_test_utils.sample_input_data_revenue(
+        n_geos=_N_GEOS,
+        n_times=_N_TIMES,
+        n_media_times=_N_MEDIA_TIMES,
+        n_controls=_N_CONTROLS,
+        n_media_channels=_N_MEDIA_CHANNELS,
+        n_rf_channels=_N_RF_CHANNELS,
+        n_non_media_channels=_N_NON_MEDIA_CHANNELS,
+        n_organic_media_channels=_N_ORGANIC_MEDIA_CHANNELS,
+        n_organic_rf_channels=_N_ORGANIC_RF_CHANNELS,
+        seed=0,
+    )
+    mmm = model.Meridian(input_data=input_data)
+    analyzer_rev = analyzer.Analyzer(
+        model_context=mmm.model_context, inference_data=self.inference_data
+    )
+    delta = 0.01
+
+    with mock.patch.object(
+        analyzer_rev,
+        "compute_incremental_outcome_aggregate",
+        autospec=True,
+        wraps=analyzer_rev.compute_incremental_outcome_aggregate,
+    ) as mock_incremental_outcome:
+      media_summary = analyzer_rev.summary_metrics(
+          marginal_roi_by_reach=False,
+          marginal_roi_incremental_increase=delta,
+          include_prior=False,
+      )
+
+    # When `kpi_type=REVENUE`, KPI equals revenue, so the mROI counterfactual
+    # is reused for mCPIK instead of being recomputed with `use_kpi=True`.
+    marginal_calls = [
+        call
+        for call in mock_incremental_outcome.call_args_list
+        if call.kwargs.get("scaling_factor1") == 1 + delta
+    ]
+    self.assertLen(marginal_calls, 1)
+    self.assertFalse(marginal_calls[0].kwargs["use_kpi"])
+
+    paid_channels = list(input_data.get_all_paid_channels())
+    marginal_revenue = analyzer_rev.incremental_outcome(
+        include_non_paid_channels=False,
+        by_reach=False,
+        scaling_factor0=1,
+        scaling_factor1=1 + delta,
+    )
+    total_spend = analyzer_rev.filter_and_aggregate_geos_and_times(
+        mmm.total_spend
+    )
+    mcpik_draws = np.array(total_spend) * delta / np.array(marginal_revenue)
+    expected = analyzer.get_central_tendency_and_ci(
+        mcpik_draws, include_median=True
+    )
+    actual = media_summary.mcpik.sel(
+        channel=paid_channels, distribution=constants.POSTERIOR
+    )
+    backend_test_utils.assert_allclose(actual, expected, rtol=1e-4, atol=1e-4)
+
   def test_media_summary_warns_if_time_not_aggregated(self):
     with self.assertWarnsRegex(
         UserWarning,
-        "ROI, mROI, Effectiveness, and CPIK are not reported because they do "
-        "not have a clear interpretation by time period.",
+        "ROI, mROI, Effectiveness, CPIK, and mCPIK are not reported because"
+        " they do not have a clear interpretation by time period.",
     ):
       media_summary = self.analyzer.summary_metrics(
           aggregate_times=False,
@@ -4317,6 +4440,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
     self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
     self.assertNotIn(constants.MROI, media_summary.data_vars)
     self.assertNotIn(constants.CPIK, media_summary.data_vars)
+    self.assertNotIn(constants.MCPIK, media_summary.data_vars)
 
     self.assertIn(constants.INCREMENTAL_OUTCOME, media_summary.data_vars)
     self.assertIn(constants.SPEND, media_summary.data_vars)
@@ -4344,6 +4468,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             constants.EFFECTIVENESS,
             constants.MROI,
             constants.CPIK,
+            constants.MCPIK,
         ],
     )
     self.assertFalse(media_summary.attrs[constants.USE_KPI])
@@ -4712,6 +4837,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             constants.EFFECTIVENESS,
             constants.MROI,
             constants.CPIK,
+            constants.MCPIK,
         ],
     )
     self.assertTrue(media_summary.attrs[constants.USE_KPI])
@@ -4845,6 +4971,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             constants.EFFECTIVENESS,
             constants.MROI,
             constants.CPIK,
+            constants.MCPIK,
         ],
     )
 
@@ -5048,12 +5175,14 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
       self.assertEqual(media_summary.roi.shape, expected_metric_shape)
       self.assertEqual(media_summary.mroi.shape, expected_metric_shape)
       self.assertEqual(media_summary.cpik.shape, expected_metric_shape)
+      self.assertEqual(media_summary.mcpik.shape, expected_metric_shape)
       self.assertEqual(media_summary.effectiveness.shape, expected_metric_shape)
     else:
       self.assertNotIn(constants.ROI, media_summary.data_vars)
       self.assertNotIn(constants.EFFECTIVENESS, media_summary.data_vars)
       self.assertNotIn(constants.MROI, media_summary.data_vars)
       self.assertNotIn(constants.CPIK, media_summary.data_vars)
+      self.assertNotIn(constants.MCPIK, media_summary.data_vars)
 
   def test_summary_metrics_new_times_data_returns_correct_variables(self):
     summary_metrics = self.analyzer.summary_metrics(
@@ -5089,6 +5218,7 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
             constants.EFFECTIVENESS,
             constants.MROI,
             constants.CPIK,
+            constants.MCPIK,
         ],
     )
 
@@ -6449,9 +6579,7 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
           ["2100-01-04", "2100-01-11"]
       )
     assert isinstance(time_indices, dict)
-    self.assertCountEqual(
-        time_indices, [constants.BETA_GM, constants.BETA_GRF]
-    )
+    self.assertCountEqual(time_indices, [constants.BETA_GM, constants.BETA_GRF])
     np.testing.assert_array_equal(
         time_indices[constants.BETA_GM], [[2, self._N_TIMES - 1]] * 2
     )
@@ -6760,9 +6888,7 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
         "The coefficients of channels with changepoints must have a value for"
         " each time period, as from `yield_batched_distribution_tensors`.",
     ):
-      self.analyzer.get_incremental_kpi(
-          self._paid_data_tensors(), dist_tensors
-      )
+      self.analyzer.get_incremental_kpi(self._paid_data_tensors(), dist_tensors)
 
   def test_coefficients_of_other_time_periods_raise(self):
     with self.assertRaisesWithLiteralMatch(
@@ -6822,8 +6948,9 @@ class AnalyzerChangepointsTest(backend_test_utils.MeridianTestCase):
       # The model's time periods, some weeks later.
       times = [
           str(t)
-          for t in np.array(self.times, dtype="datetime64[D]")
-          + 7 * n_weeks_later
+          for t in (
+              np.array(self.times, dtype="datetime64[D]") + 7 * n_weeks_later
+          )
       ]
       new_data = tensors.DataTensors(
           media=self.mmm.media_tensors.media, time=times

@@ -1679,7 +1679,7 @@ class MediaSummary:
           `ci_hi`), `distribution` (`prior`, `posterior`)
         - **Data variables:** `impressions`, `pct_of_impressions`, `spend`,
           `pct_of_spend`, `CPM`, `incremental_outcome`, `pct_of_contribution`,
-          `roi`, `effectiveness`, `mroi`.
+          `roi`, `effectiveness`, `mroi`, `cpik`, `mcpik`.
     """
     return self._analyzer.summary_metrics(
         selected_times=self._selected_times,
@@ -1798,7 +1798,7 @@ class MediaSummary:
           c.PCT_OF_IMPRESSIONS,
           c.PCT_OF_SPEND,
       ])
-      monetary_metrics = [c.CPM, c.CPIK] + [
+      monetary_metrics = [c.CPM, c.CPIK, c.MCPIK] + [
           c.SPEND,
           c.INCREMENTAL_OUTCOME,
       ] * use_revenue
@@ -1813,16 +1813,17 @@ class MediaSummary:
               else summary_text.INC_KPI_COL
           ),
       }
-      # Format CPIK to use median instead of mean.
+      # Format CPIK and mCPIK to use median instead of mean.
+      median_metrics = [c.CPIK, c.MCPIK]
       df_mean = (
-          summary_metrics.drop_vars([c.CPIK])
+          summary_metrics.drop_vars(median_metrics)
           .sel(distribution=distribution)
           .drop_sel(metric=c.MEDIAN)
           .to_dataframe()
           .rename({c.MEAN: 'central_tendency'})
       )
       df_median = (
-          summary_metrics[c.CPIK]
+          summary_metrics[median_metrics]
           .sel(distribution=distribution)
           .drop_sel(metric=c.MEAN)
           .to_dataframe()
@@ -1840,10 +1841,14 @@ class MediaSummary:
     for k in percentage_metrics:
       df[k] = df[k].astype(str) + '%'
 
-    # Format monetary values.
+    # Format monetary values. Metrics that are not defined for a channel (e.g.
+    # `mcpik` for "All Channels") are `NaN` and are left without the currency
+    # symbol.
     for k in monetary_metrics:
       if k in df.columns:
-        df[k] = currency + df[k].astype(str)
+        df[k] = df[k].astype(str).map(
+            lambda v: v if v == 'nan' else currency + v
+        )
 
     # Format the model result data variables as central_tendency (ci_lo, ci_hi).
     index_vars = [c.CHANNEL, c.DISTRIBUTION]
@@ -2971,9 +2976,11 @@ class MediaSummary:
     Returns:
       A dataframe of the posterior values for the selected metric.
     """
-    # Format CPIK to use median instead of mean.
-    central_tendency = c.MEDIAN if metric == c.CPIK else c.MEAN
-    unused_central_tendency = c.MEAN if metric == c.CPIK else c.MEDIAN
+    # Format CPIK and mCPIK to use median instead of mean.
+    if metric in (c.CPIK, c.MCPIK):
+      central_tendency, unused_central_tendency = c.MEDIAN, c.MEAN
+    else:
+      central_tendency, unused_central_tendency = c.MEAN, c.MEDIAN
     return (
         self.get_paid_summary_metrics()[metric]
         .sel(distribution=c.POSTERIOR)
