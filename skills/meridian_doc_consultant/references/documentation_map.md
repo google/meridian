@@ -850,9 +850,9 @@ experiments usually span both sections.
         The design search pipeline evaluates out-of-sample R-squared fit, A/A
         robustness via placebo simulation p-values, statistical power as MDE
         lift (SE_lift times (Z_{1-alpha/2} + Z_{1-beta}) divided by baseline
-        control conversion, two-sided by default), and budget, splitting pretest
-        data into training, validation, and final selection periods across six
-        steps.)
+        treatment conversion, two-sided by default), and budget, splitting
+        pretest data into training, validation, and final selection periods
+        across six steps.)
     *   `https://developers.google.com/meridian/geox/config-your-preferred-design`
         (Step-by-step guide to configuring a GeoX design with
         `geox.DesignConfig` (`experiment_duration`, `cell_count`,
