@@ -34,6 +34,7 @@ from meridian.model import media
 from meridian.model import prior_distribution
 from meridian.model import spec
 from meridian.model import transformers
+from meridian.model.calibration import base as calibration_base
 import numpy as np
 
 __all__ = [
@@ -679,16 +680,22 @@ def _allows_negative_values(
 
 
 def _changepoint_calibration_error(
-    channels: Sequence[str], attribute: str
+    channels: Sequence[str], *, cause: str, remedy: str
 ) -> ValueError:
-  """Returns the error for ROI calibration of channels with changepoints."""
-  channel_list = list(channels)
+  """Returns the error for ROI calibration of channels with changepoints.
+
+  Args:
+    channels: The calibrated channels that have changepoints.
+    cause: What calibrates `channels`, as the start of a sentence that ends with
+      ", which also has `changepoints`."
+    remedy: What to change to keep `changepoints`, to complete the sentence
+      "keep `changepoints` and ...".
+  """
   example = channels[0]
   verb = "has" if len(channels) == 1 else "have"
   return ValueError(
       "ROI calibration is not supported for channels with `changepoints`."
-      f" `{attribute}` sets a calibration period for {channel_list}, which also"
-      f" {verb} `changepoints`.\n"
+      f" {cause}, which also {verb} `changepoints`.\n"
       "To calibrate ROI for channels with changepoints, first, partition the"
       " data manually by dividing the channel into distinct periods and"
       " modeling each as a separate channel without changepoints. For example,"
@@ -698,7 +705,7 @@ def _changepoint_calibration_error(
       " period.\n"
       "Alternatively, if you want to model the channel with time-varying"
       " media effectiveness without ROI calibration, keep `changepoints` and"
-      f" remove {channel_list} from `{attribute}`."
+      f" {remedy}."
   )
 
 
@@ -2390,11 +2397,12 @@ class ModelContext:
     )
 
   def _validate_changepoint_calibration(self) -> None:
-    """Rejects ROI calibration periods for channels with changepoints.
+    """Rejects ROI calibration of channels with changepoints.
 
     Raises:
       ValueError: If an ROI calibration period restricts a channel with
-        changepoints to part of the media time periods.
+        changepoints to part of the media time periods, or if the ROI prior of
+        a channel with changepoints is experiment-calibrated.
     """
     if not self._changepoints:
       return
@@ -2428,7 +2436,52 @@ class ModelContext:
             if getattr(self._model_spec, legacy) is not None
             else declarative
         )
-        raise _changepoint_calibration_error(channels, attribute)
+        raise _changepoint_calibration_error(
+            channels,
+            cause=f"`{attribute}` sets a calibration period for {channels}",
+            remedy=f"remove {channels} from `{attribute}`",
+        )
+    self._validate_changepoint_calibrated_priors()
+
+  def _validate_changepoint_calibrated_priors(self) -> None:
+    """Rejects experiment-calibrated ROI priors of channels with changepoints.
+
+    `CalibrationBuilder` turns experiment results into the ROI prior of a
+    channel. It sees only the input data, so it cannot tell which channels
+    have changepoints, and the check is made here.
+
+    Raises:
+      ValueError: If the ROI prior of a channel with changepoints is
+        experiment-calibrated.
+    """
+    for prior_name, channel_coordinate in (
+        (constants.ROI_M, self._input_data.media_channel),
+        (constants.ROI_RF, self._input_data.rf_channel),
+    ):
+      distribution = getattr(self._model_spec.prior, prior_name)
+      # `ModelSpec` finds calibrated priors inside wrapper distributions the
+      # same way.
+      while hasattr(distribution, "distribution"):
+        distribution = distribution.distribution
+      if not isinstance(distribution, calibration_base.CalibratedDistribution):
+        continue
+      channels = [
+          name
+          for name, is_calibrated in zip(
+              self._coordinate_names(channel_coordinate),
+              distribution.get_calibration_status(),
+          )
+          if is_calibrated and name in self._changepoints
+      ]
+      if channels:
+        raise _changepoint_calibration_error(
+            channels,
+            cause=(
+                f"The `{prior_name}` prior is experiment-calibrated for"
+                f" {channels}"
+            ),
+            remedy=f"don't calibrate the `{prior_name}` prior for {channels}",
+        )
 
   def _changepoint_knot_overlaps(self) -> dict[str, list[datetime.date]]:
     """The changepoints that are on a knot.

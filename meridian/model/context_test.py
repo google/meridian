@@ -35,6 +35,7 @@ from meridian.model import knots as knots_module
 from meridian.model import model_test_data
 from meridian.model import prior_distribution
 from meridian.model import spec
+from meridian.model.calibration import base as calibration_base
 import numpy as np
 import xarray as xr
 
@@ -4230,6 +4231,108 @@ class ChangepointsTest(
     assert calibration_period is not None
     self.assertFalse(np.all(calibration_period[:, 0]))
     self.assertTrue(np.all(calibration_period[:, 1]))
+
+  def _calibrated_prior(
+      self,
+      channels: Sequence[str],
+      calibrated: Collection[str],
+      with_outputs: bool = True,
+  ) -> calibration_base.CalibratedDistribution:
+    """Returns an ROI prior of `channels`, calibrated for `calibrated`.
+
+    Args:
+      channels: The channels of the prior, in the order of the input data.
+      calibrated: The channels whose prior is experiment-calibrated.
+      with_outputs: Whether the calibrated channels have a calibration output,
+        as they do when the prior comes from `CalibrationBuilder`.
+    """
+
+    def distribution() -> backend.tfd.Distribution:
+      return backend.tfd.LogNormal(
+          backend.np_float_dtype(0.2), backend.np_float_dtype(0.9)
+      )
+
+    def output(channel: str) -> calibration_base.CalibrationOutput | None:
+      if not with_outputs or channel not in calibrated:
+        return None
+      return calibration_base.CalibrationOutput(
+          channel_name=channel, intermediary_prior=distribution()
+      )
+
+    return calibration_base.CalibratedDistribution(
+        distributions=[distribution() for _ in channels],
+        is_calibrated=[channel in calibrated for channel in channels],
+        calibration_outputs=[output(channel) for channel in channels],
+    )
+
+  @parameterized.named_parameters(
+      ("media_channel", constants.ROI_M, True, False),
+      ("rf_channel", constants.ROI_RF, True, False),
+      ("media_channel_without_outputs", constants.ROI_M, False, False),
+      ("media_channel_wrapped", constants.ROI_M, True, True),
+  )
+  def test_calibrated_prior_of_channel_with_changepoints_raises(
+      self, prior_name: str, with_outputs: bool, wrapped: bool
+  ):
+    channels = self.media if prior_name == constants.ROI_M else self.rf
+    channel = self.media[1] if prior_name == constants.ROI_M else self.rf[0]
+    prior = self._calibrated_prior(
+        channels, [channel], with_outputs=with_outputs
+    )
+    if wrapped:
+      prior = backend.tfd.BatchBroadcast(prior, len(channels))
+    model_spec = _ModelSpecWithChangepoints(
+        changepoints={
+            self.media[1]: [self.dates[50]],
+            self.rf[0]: [self.dates[50]],
+        },
+        prior=prior_distribution.PriorDistribution(**{prior_name: prior}),
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        "ROI calibration is not supported for channels with `changepoints`.*"
+        + re.escape(
+            f"The `{prior_name}` prior is experiment-calibrated for"
+            f" {[channel]}, which also has `changepoints`."
+        ),
+    ):
+      self._context(model_spec)
+
+  def test_calibrated_prior_error_says_how_to_keep_changepoints(self):
+    model_spec = _ModelSpecWithChangepoints(
+        changepoints={self.media[1]: [self.dates[50]]},
+        prior=prior_distribution.PriorDistribution(
+            roi_m=self._calibrated_prior(self.media, [self.media[1]])
+        ),
+    )
+    with self.assertRaisesRegex(
+        ValueError,
+        re.escape(
+            "keep `changepoints` and don't calibrate the `roi_m` prior for"
+            f" {[self.media[1]]}."
+        ),
+    ):
+      self._context(model_spec)
+
+  def test_calibrated_prior_of_other_channels_is_allowed(self):
+    roi_m = self._calibrated_prior(self.media, [self.media[0]])
+    roi_rf = self._calibrated_prior(self.rf, self.rf)
+    model_spec = _ModelSpecWithChangepoints(
+        changepoints={self.media[1]: [self.dates[50]]},
+        prior=prior_distribution.PriorDistribution(roi_m=roi_m, roi_rf=roi_rf),
+    )
+    model_context = self._context(model_spec)
+    self.assertIs(model_context.model_spec.prior.roi_m, roi_m)
+    self.assertIs(model_context.model_spec.prior.roi_rf, roi_rf)
+
+  def test_calibrated_prior_without_changepoints_is_allowed(self):
+    roi_m = self._calibrated_prior(self.media, self.media)
+    model_context = self._context(
+        _ModelSpecWithChangepoints(
+            prior=prior_distribution.PriorDistribution(roi_m=roi_m)
+        )
+    )
+    self.assertIs(model_context.model_spec.prior.roi_m, roi_m)
 
   def test_only_media_channels_have_changepoints(self):
     model_context = self._context(
