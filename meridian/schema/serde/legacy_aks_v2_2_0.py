@@ -17,7 +17,7 @@
 # ==============================================================================
 # This file contains a snapshot of the legacy Automatic Knot Selection (AKS)
 # classes from `meridian/model/knots.py`.
-# It is used exclusively to deserialize older models (versions <= 2.2.0) that
+# It is used exclusively to deserialize older models (versions <= 2.2.1) that
 # utilized the older AKS algorithm.
 # Do NOT update this algorithm to match newer implementations in `knots.py`.
 # ==============================================================================

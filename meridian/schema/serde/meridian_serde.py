@@ -124,7 +124,8 @@ _VERSION_INFO = semver.VersionInfo.parse(meridian.__version__)
 _SCHEMA_VERSION_INFO = semver.VersionInfo.parse(_get_schema_version())
 _LEGACY_AKS_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.0')
 _LEGACY_AKS_V1_7_1_CUTOFF_VERSION = semver.VersionInfo.parse('1.7.1')
-_LEGACY_AKS_V2_2_0_CUTOFF_VERSION = semver.VersionInfo.parse('2.2.0')
+# v2.2.1 shipped with the same pre-fix AKS algorithm as v2.2.0.
+_LEGACY_AKS_V2_2_1_CUTOFF_VERSION = semver.VersionInfo.parse('2.2.1')
 
 
 FunctionRegistry = function_registry_utils.FunctionRegistry
@@ -538,7 +539,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
         loaded_mmm.model_context._inject_legacy_knot_info_for_serde(  # pylint: disable=protected-access
             legacy_knots
         )
-      elif serialized_version <= _LEGACY_AKS_V2_2_0_CUTOFF_VERSION:
+      elif serialized_version <= _LEGACY_AKS_V2_2_1_CUTOFF_VERSION:
         legacy_knots = legacy_aks_v2_2_0.get_legacy_knots(
             deserialized_marketing_data, loaded_mmm.is_national
         )

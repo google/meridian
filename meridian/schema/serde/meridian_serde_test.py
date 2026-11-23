@@ -1593,9 +1593,10 @@ class MeridianSerdeTest(parameterized.TestCase):
       dict(testcase_name='v2_0_0', mock_version='2.0.0'),
       dict(testcase_name='v2_1_0', mock_version='2.1.0'),
       dict(testcase_name='v2_2_0', mock_version='2.2.0'),
+      dict(testcase_name='v2_2_1', mock_version='2.2.1'),
   )
   def test_deserialization_of_legacy_aks_v2_2_0_model(self, mock_version):
-    """Tests that versions in (1.7.1, 2.2.0] route to the v2.2.0 snapshot."""
+    """Tests that versions in (1.7.1, 2.2.1] route to the v2.2.0 snapshot."""
     meridian_model = meridian_pb.MeridianModel(
         model_version=mock_version,
         hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
@@ -1650,9 +1651,14 @@ class MeridianSerdeTest(parameterized.TestCase):
           deserialized_model.model_context.knot_info.knot_locations, [0, 1]
       )
 
-  def test_deserialization_of_legacy_aks_v2_2_0_model_single_knot(self):
+  @parameterized.named_parameters(
+      dict(testcase_name='v2_2_0', mock_version='2.2.0'),
+      dict(testcase_name='v2_2_1', mock_version='2.2.1'),
+  )
+  def test_deserialization_of_legacy_aks_v2_2_0_model_single_knot(
+      self, mock_version
+  ):
     """Tests that a single legacy knot yields a common intercept."""
-    mock_version = '2.2.0'
 
     meridian_model = meridian_pb.MeridianModel(
         model_version=mock_version,
@@ -1822,10 +1828,22 @@ class MeridianSerdeTest(parameterized.TestCase):
       ):
         self.serde.deserialize(mmm_kernel)
 
-  def test_deserialization_of_current_aks_model(self):
+  @parameterized.named_parameters(
+      dict(
+          testcase_name='just_above_cutoff',
+          mock_version=str(
+              serde._LEGACY_AKS_V2_2_1_CUTOFF_VERSION.bump_patch()  # pylint: disable=protected-access
+          ),
+      ),
+      dict(
+          testcase_name='next_minor',
+          mock_version=str(
+              serde._LEGACY_AKS_V2_2_1_CUTOFF_VERSION.bump_minor()  # pylint: disable=protected-access
+          ),
+      ),
+  )
+  def test_deserialization_of_current_aks_model(self, mock_version):
     # Pinned above every legacy AKS cutoff, independent of `version.py`.
-    mock_version = str(serde._LEGACY_AKS_V2_2_0_CUTOFF_VERSION.bump_minor())  # pylint: disable=protected-access
-
     meridian_model = meridian_pb.MeridianModel(
         model_version=mock_version,
         hyperparameters=test_data.DEFAULT_HYPERPARAMETERS_PROTO,
@@ -1968,7 +1986,7 @@ class MeridianSerdeTest(parameterized.TestCase):
 
       # Pins a version above every legacy AKS cutoff so that loading takes
       # the current AKS path, independent of `version.py`.
-      pinned_version = serde._LEGACY_AKS_V2_2_0_CUTOFF_VERSION.bump_minor()  # pylint: disable=protected-access
+      pinned_version = serde._LEGACY_AKS_V2_2_1_CUTOFF_VERSION.bump_minor()  # pylint: disable=protected-access
       serialized_kernel = serde.MeridianSerde().serialize(
           meridian_model, meridian_version=pinned_version
       )
@@ -1987,7 +2005,7 @@ class MeridianSerdeTest(parameterized.TestCase):
     """Tests that the frozen v2.2.0 snapshot preserves the original failure.
 
     Before the single-knot fix, AKS floored its search at one internal knot and
-    raised when every internal knot was dropped. Models saved at or below 2.2.0
+    raised when every internal knot was dropped. Models saved at or below 2.2.1
     were fit with that algorithm, so the snapshot must keep raising rather than
     silently returning the single knot the current algorithm would select.
     """
