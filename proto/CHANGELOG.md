@@ -23,6 +23,10 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Add the `marginal_cost_per_contribution` field to `Outcome`, the marginal
+    counterpart of `cost_per_contribution` (e.g. marginal CPA when the
+    contribution is acquisitions).
+
 ## [1.7.0] - 2026-11-04
 
 *   Add the `balanced` field to `HoldoutConfig.RandomHoldout`, recording whether

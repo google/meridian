@@ -74,4 +74,10 @@ message Outcome {
   // E.g. when contribution is thousand impression, it is CPM; when contribution
   // is acquisition, this is CPA.
   common.Estimate cost_per_contribution = 6;
+
+  // Marginal cost per incremental outcome: the additional spend required for
+  // one additional unit of outcome. Pairs with `marginal_roi` the way
+  // `cost_per_contribution` pairs with `roi`. E.g. when contribution is
+  // acquisition, this is the marginal CPA.
+  common.Estimate marginal_cost_per_contribution = 7;
 }
