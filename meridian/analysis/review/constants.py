@@ -22,6 +22,8 @@ from meridian.model.eda import constants as eda_constants
 RHAT = "rhat"
 PARAMETER = "parameter"
 CONVERGENCE_THRESHOLD = "convergence_threshold"
+N_CHAINS = "n_chains"
+N_DRAWS = "n_draws"
 CHANNELS_LOW_HIGH = "channels_low_high"
 PRIOR_ROI_LO = "prior_roi_lo"
 PRIOR_ROI_HI = "prior_roi_hi"
@@ -96,6 +98,9 @@ CONVERGENCE_NOT_FULLY_CONVERGED_RECOMMENDATION = (
     NOT_FULLY_CONVERGED_RECOMMENDATION
 )
 CONVERGENCE_NOT_CONVERGED_RECOMMENDATION = NOT_CONVERGED_RECOMMENDATION
+CONVERGENCE_NOT_ASSESSED_RECOMMENDATION = (
+    "Sample at least 2 chains with at least 2 draws each to check convergence."
+)
 
 BASELINE_FAIL_RECOMMENDATION = (
     "This high probability points to a statistical error and is a clear signal"

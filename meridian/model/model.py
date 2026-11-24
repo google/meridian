@@ -85,10 +85,14 @@ def _is_valid_results_subset(
       results.HighVarianceCheckResult,
       results.PotentialBiasCheckResult,
   ])
-  # Case A: Convergence check only, which must have failed.
+  # Case A: Convergence check only, which must have failed or not been
+  # assessed, because the other checks are skipped then.
   if present_types == results.CONVERGENCE_ONLY_SET:
     conv_result = results_by_type[results.ConvergenceCheckResult]
-    return conv_result.case is results.ConvergenceCases.NOT_CONVERGED
+    return conv_result.case in (
+        results.ConvergenceCases.NOT_CONVERGED,
+        results.ConvergenceCases.NOT_ASSESSED,
+    )
 
   # Cases B, C, and D: Standard sets of successful model checks.
   return present_types in (
@@ -1218,6 +1222,15 @@ class Meridian:
         (https://developers.google.com/meridian/docs/post-modeling/model-debugging#gpu-oom-error).
     """
     self._run_model_fitting_guardrail()
+    total_chains = n_chains if isinstance(n_chains, int) else sum(n_chains)
+    if total_chains < 2 or n_keep < 2:
+      warnings.warn(
+          f"Sampling {total_chains} chain(s) with {n_keep} kept draw(s) each."
+          " R-hat needs at least 2 chains and 2 draws per chain, so `review()`"
+          " can't assess convergence and fails the model. Sample at least 2"
+          " chains with at least 2 draws each to check convergence.",
+          stacklevel=2,
+      )
 
     posterior_inference_data = self.posterior_sampler_callable(
         n_chains=n_chains,

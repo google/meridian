@@ -698,6 +698,46 @@ class MeridianSerdeTest(parameterized.TestCase):
         unpacked_model.convergence_info,
     )
 
+  @parameterized.named_parameters(
+      dict(testcase_name='one_chain', n_chains=1, n_draws=7),
+      dict(testcase_name='one_draw', n_chains=3, n_draws=1),
+  )
+  def test_serialize_leaves_convergence_unset_with_fewer_than_two_chains_or_draws(
+      self, n_chains: int, n_draws: int
+  ):
+    posterior = test_data.make_sample_dataset(
+        n_chains,
+        n_draws,
+        n_geos=5,
+        n_controls=2,
+        n_knots=49,
+        n_times=49,
+        n_media_channels=3,
+    )
+
+    serialized_model = self.serde.serialize(
+        model.Meridian(
+            input_data=_INPUT_DATA,
+            model_spec=spec.ModelSpec(knots=49),
+            inference_data=az.InferenceData(
+                prior=_PRIOR_DATASET,
+                posterior=posterior,
+                trace=posterior,
+            ),
+        ),
+        'test_model',
+        include_convergence_info=True,
+    )
+    unpacked_model = meridian_pb.MeridianModel()
+    serialized_model.model.Unpack(unpacked_model)
+
+    convergence_info = unpacked_model.convergence_info
+    self.assertFalse(convergence_info.HasField('convergence'))
+    self.assertFalse(convergence_info.HasField('r_hat_diagnostic'))
+    self.assertEqual(convergence_info.mcmc_sampling_trace.num_chains, n_chains)
+    self.assertEqual(convergence_info.mcmc_sampling_trace.num_draws, n_draws)
+    self._mock_analyzer.return_value.get_rhat.assert_not_called()
+
   def test_serialize_model_without_eda_spec(self):
     meridian_model = model.Meridian(
         input_data=_INPUT_DATA,

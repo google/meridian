@@ -88,6 +88,43 @@ class ConvergenceCheckResultTest(parameterized.TestCase):
         f"{review_constants.NOT_CONVERGED_RECOMMENDATION}",
     )
 
+  def test_convergence_check_result_not_assessed(self):
+    result = results.ConvergenceCheckResult(
+        case=results.ConvergenceCases.NOT_ASSESSED,
+        config=configs.ConvergenceConfig(),
+        max_r_hat=np.nan,
+        max_parameter=None,
+        n_chains=1,
+        n_draws=30,
+    )
+    self.assertEqual(result.case.status, results.Status.FAIL)
+    self.assertEqual(
+        result.recommendation,
+        "Convergence can't be assessed: R-hat needs at least 2 chains and 2"
+        " draws per chain, but the posterior has 1 chain(s) with 30 draw(s)"
+        " each. Sample at least 2 chains with at least 2 draws each to check"
+        " convergence.",
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="missing_n_chains", n_chains=None, n_draws=30),
+      dict(testcase_name="missing_n_draws", n_chains=1, n_draws=None),
+  )
+  def test_not_assessed_result_requires_chain_and_draw_counts(
+      self, n_chains: int | None, n_draws: int | None
+  ):
+    with self.assertRaisesRegex(
+        ValueError, "`n_chains` and `n_draws` are required"
+    ):
+      results.ConvergenceCheckResult(
+          case=results.ConvergenceCases.NOT_ASSESSED,
+          config=configs.ConvergenceConfig(),
+          max_r_hat=np.nan,
+          max_parameter=None,
+          n_chains=n_chains,
+          n_draws=n_draws,
+      )
+
 
 class BaselineCheckResultTest(parameterized.TestCase):
 
@@ -617,6 +654,33 @@ Convergence Check:
   Status: PASS
   Recommendation: The model has likely converged, as all parameters have R-hat values < 1.2."""
     self.assertMultiLineEqual(str(summary), expected_repr)
+
+  def test_review_summary_with_not_assessed_convergence_renders(self):
+    convergence_result = results.ConvergenceCheckResult(
+        case=results.ConvergenceCases.NOT_ASSESSED,
+        config=configs.ConvergenceConfig(),
+        max_r_hat=np.nan,
+        max_parameter=None,
+        n_chains=1,
+        n_draws=30,
+    )
+    summary = results.ReviewSummary(
+        overall_status=results.Status.FAIL,
+        summary_message=(
+            "Failed: Model convergence can't be assessed. Other checks were"
+            " skipped."
+        ),
+        results=[convergence_result],
+        health_score=0.0,
+    )
+
+    self.assertIn("Health Score: 0.0", str(summary))
+    self.assertIn(convergence_result.recommendation, str(summary))
+    self.assertIn(
+        "R-hat needs at least 2 chains and 2 draws per chain, but the posterior"
+        " has 1 chain(s) with 30 draw(s) each.",
+        summary._create_health_card_html(),
+    )
 
   @parameterized.named_parameters(
       dict(

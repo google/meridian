@@ -26,6 +26,7 @@ from meridian.analysis.review import checks
 from meridian.analysis.review import configs
 from meridian.analysis.review import constants as review_constants
 from meridian.analysis.review import results
+from meridian.common import errors
 from meridian.data import input_data
 from meridian.model import context
 from meridian.model import transformers
@@ -46,6 +47,10 @@ class ConvergenceCheckTest(parameterized.TestCase):
     self.inference_data.posterior = mock.create_autospec(
         xr.Dataset, spec_set=True, instance=True
     )
+    self.inference_data.posterior.sizes = {
+        constants.CHAIN: 2,
+        constants.DRAW: 10,
+    }
     self.analyzer = mock.create_autospec(
         spec=analyzer_module.Analyzer, spec_set=True, instance=True
     )
@@ -85,6 +90,8 @@ class ConvergenceCheckTest(parameterized.TestCase):
     )
     result = convergence_check.run()
     self.assertEqual(result.case, expected_case)
+    self.assertEqual(result.n_chains, 2)
+    self.assertEqual(result.n_draws, 10)
 
     if result.case == results.ConvergenceCases.CONVERGED:
       self.assertEqual(
@@ -132,6 +139,54 @@ class ConvergenceCheckTest(parameterized.TestCase):
         "The model has likely converged, as all parameters have R-hat values"
         " < 1.2.",
     )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="one_chain", n_chains=1, n_draws=10),
+      dict(testcase_name="one_draw", n_chains=4, n_draws=1),
+      dict(testcase_name="one_chain_one_draw", n_chains=1, n_draws=1),
+  )
+  def test_convergence_check_not_assessed_with_fewer_than_two_chains_or_draws(
+      self, n_chains: int, n_draws: int
+  ):
+    self.inference_data.posterior.sizes = {
+        constants.CHAIN: n_chains,
+        constants.DRAW: n_draws,
+    }
+
+    convergence_check = checks.ConvergenceCheck(
+        model_context=self.model_context,
+        inference_data=self.inference_data,
+        analyzer=self.analyzer,
+        config=configs.ConvergenceConfig(),
+    )
+    result = convergence_check.run()
+
+    self.assertIs(result.case, results.ConvergenceCases.NOT_ASSESSED)
+    self.assertIs(result.case.status, results.Status.FAIL)
+    self.assertTrue(np.isnan(result.max_r_hat))
+    self.assertIsNone(result.max_parameter)
+    self.assertEqual(result.n_chains, n_chains)
+    self.assertEqual(result.n_draws, n_draws)
+    self.assertEqual(
+        result.recommendation,
+        "Convergence can't be assessed: R-hat needs at least 2 chains and 2"
+        f" draws per chain, but the posterior has {n_chains} chain(s) with"
+        f" {n_draws} draw(s) each. Sample at least 2 chains with at least 2"
+        " draws each to check convergence.",
+    )
+    self.analyzer.get_rhat.assert_not_called()
+
+  def test_convergence_check_raises_when_not_fitted(self):
+    convergence_check = checks.ConvergenceCheck(
+        model_context=self.model_context,
+        inference_data=az.InferenceData(),
+        analyzer=self.analyzer,
+        config=configs.ConvergenceConfig(),
+    )
+    with self.assertRaisesRegex(
+        errors.NotFittedModelError, "The model must be fitted"
+    ):
+      convergence_check.run()
 
 
 class ROIConsistencyCheckTest(parameterized.TestCase):

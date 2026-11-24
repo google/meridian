@@ -48,6 +48,7 @@ import arviz as az
 from google.protobuf import text_format
 import meridian
 from meridian import backend
+from meridian import constants
 from meridian.analysis import analyzer
 from meridian.analysis import visualizer
 from meridian.common import errors
@@ -154,6 +155,9 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       model_id: The ID of the model.
       meridian_version: The version of the Meridian model.
       include_convergence_info: Whether to include convergence information.
+        When the posterior has fewer than 2 chains or fewer than 2 draws per
+        chain, R-hat can't be assessed, so the convergence information leaves
+        the convergence flag and the R-hat diagnostic unset.
       distribution_function_registry: Optional. A lookup table that maps string
         keys to custom functions to be used as parameters in various
         `tfp.distributions`.
@@ -273,24 +277,7 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
     """Creates ModelConvergence proto."""
     model_convergence_proto = meridian_pb.ModelConvergence()
     try:
-      # NotFittedModelError can be raised below. If raised,
-      # return None. Otherwise, set convergence status based on
-      # MCMCSamplingError (caught in the except block).
-      rhats = analyzer.Analyzer(
-          model_context=mmm.model_context,
-          inference_data=mmm.inference_data,
-      ).get_rhat()
-      rhat_proto = meridian_pb.RHatDiagnostic()
-      for name, tensor in rhats.items():
-        rhat_proto.parameter_r_hats.add(
-            name=name, tensor=backend.make_tensor_proto(tensor)
-        )
-      model_convergence_proto.r_hat_diagnostic.CopyFrom(rhat_proto)
-
-      visualizer.ModelDiagnostics(mmm).plot_rhat_boxplot()
-      model_convergence_proto.convergence = True
-    except model.MCMCSamplingError:
-      model_convergence_proto.convergence = False
+      self._set_rhat_convergence(mmm, model_convergence_proto)
     except errors.NotFittedModelError:
       return None
 
@@ -310,6 +297,46 @@ class MeridianSerde(serde.Serde[kernel_pb.MmmKernel, model.Meridian]):
       model_convergence_proto.mcmc_sampling_trace.CopyFrom(mcmc_sampling_trace)
 
     return model_convergence_proto
+
+  def _set_rhat_convergence(
+      self,
+      mmm: model.Meridian,
+      model_convergence_proto: meridian_pb.ModelConvergence,
+  ) -> None:
+    """Sets the R-hat diagnostic and the convergence flag if R-hat is defined.
+
+    R-hat needs at least 2 chains and 2 draws per chain. If the posterior has
+    fewer chains or draws, convergence can't be assessed, so `r_hat_diagnostic`
+    and `convergence` are left unset instead of recording `convergence = True`.
+
+    Args:
+      mmm: Meridian model.
+      model_convergence_proto: The `ModelConvergence` proto to update.
+
+    Raises:
+      NotFittedModelError: If the model isn't fitted.
+    """
+    if hasattr(
+        mmm.inference_data, constants.POSTERIOR
+    ) and not analyzer.has_assessable_rhat_dims(
+        mmm.inference_data.posterior  # pyrefly: ignore[missing-attribute]
+    ):
+      return
+    rhats = analyzer.Analyzer(
+        model_context=mmm.model_context,
+        inference_data=mmm.inference_data,
+    ).get_rhat()
+    rhat_proto = meridian_pb.RHatDiagnostic()
+    for name, tensor in rhats.items():
+      rhat_proto.parameter_r_hats.add(
+          name=name, tensor=backend.make_tensor_proto(tensor)
+      )
+    model_convergence_proto.r_hat_diagnostic.CopyFrom(rhat_proto)
+    try:
+      visualizer.ModelDiagnostics(mmm).plot_rhat_boxplot()
+      model_convergence_proto.convergence = True
+    except model.MCMCSamplingError:
+      model_convergence_proto.convergence = False
 
   def deserialize(  # pyrefly: ignore[bad-override]
       self,
