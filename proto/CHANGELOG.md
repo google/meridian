@@ -23,6 +23,8 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-24
+
 *   Add the `marginal_cost_per_contribution` field to `Outcome`, the marginal
     counterpart of `cost_per_contribution` (e.g. marginal CPA when the
     contribution is acquisitions).
@@ -139,4 +141,5 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 [1.5.0]: https://github.com/google/meridian/releases/tag/proto-v1.5.0
 [1.6.0]: https://github.com/google/meridian/releases/tag/proto-v1.6.0
 [1.7.0]: https://github.com/google/meridian/releases/tag/proto-v1.7.0
-[Unreleased]: https://github.com/google/meridian/compare/proto-v1.7.0...HEAD
+[1.8.0]: https://github.com/google/meridian/releases/tag/proto-v1.8.0
+[Unreleased]: https://github.com/google/meridian/compare/proto-v1.8.0...HEAD
