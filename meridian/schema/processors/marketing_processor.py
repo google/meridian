@@ -905,13 +905,13 @@ class MarketingProcessor(
       is_revenue_type: Whether the media summary metrics above are revenue
         based.
       is_all_channels: If True, the given media summary represents the aggregate
-        "All Channels". Omit `effectiveness` and `mroi` in this case.
+        "All Channels". Omit `effectiveness`, `mroi`, and `mcpik` in this case.
       confidence_level: Confidence level for credible intervals, represented as
         a value between zero and one.
     """
     data_vars = media_summary_metrics.data_vars
 
-    effectiveness = roi = mroi = cpik = None
+    effectiveness = roi = mroi = cpik = mcpik = None
     if not is_all_channels and constants.EFFECTIVENESS in data_vars:
       effectiveness = outcome_pb2.Effectiveness(
           media_unit=constants.IMPRESSIONS,
@@ -952,6 +952,15 @@ class MarketingProcessor(
           metric=constants.MEDIAN,
       )
 
+    if not is_all_channels and constants.MCPIK in data_vars:
+      # Like CPIK, mCPIK is a per-draw reciprocal, so the median is a more
+      # robust central tendency than the mean.
+      mcpik = common.to_estimate(
+          media_summary_metrics[constants.MCPIK],
+          confidence_level,
+          metric=constants.MEDIAN,
+      )
+
     if constants.ROI in data_vars:
       roi = common.to_estimate(
           media_summary_metrics[constants.ROI],
@@ -969,6 +978,7 @@ class MarketingProcessor(
         cost_per_contribution=cpik,
         roi=roi,
         marginal_roi=mroi,
+        marginal_cost_per_contribution=mcpik,
     )
 
   def _compute_response_curve(

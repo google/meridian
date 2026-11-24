@@ -23,6 +23,11 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   `MarketingProcessor` now populates `Outcome.marginal_cost_per_contribution`
+    (e.g. marginal CPA) from the `mcpik` media summary metric, using the
+    median as the point estimate like `cost_per_contribution`. As with
+    `marginal_roi`, it is not set for "All Channels".
+
 *   `model.load_mmm()` now raises a `ValueError` directing users to
     `meridian.schema.serde.meridian_serde.load_meridian()` when given a
     protobuf file (`.binpb`, `.txtpb`, or `.textproto`, case-insensitive), or
