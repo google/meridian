@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import typing
 from typing import Any
 import warnings
 
@@ -1962,6 +1963,14 @@ class MediaSummaryTest(parameterized.TestCase):
         model_context=self.context_revenue_2,
     )
 
+    # The models have no control variables, unless a test sets them.
+    for mock_input_data in (
+        self.input_data_1,
+        self.input_data_2,
+        self.input_data_3,
+    ):
+      mock_input_data.control_variable = None
+
     self.mock_paid_media_metrics = test_utils.generate_paid_summary_metrics()
     self.mock_all_summary_metrics = test_utils.generate_all_summary_metrics()
 
@@ -2344,7 +2353,7 @@ class MediaSummaryTest(parameterized.TestCase):
       mock_all_metrics.return_value = summary_metrics
       plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
 
-    df = plot.data
+    df = typing.cast(pd.DataFrame, plot.data)
     self.assertEqual(
         list(df.columns),
         [c.TIME, c.CHANNEL, c.INCREMENTAL_OUTCOME, c.PCT_OF_CONTRIBUTION],
@@ -2369,14 +2378,46 @@ class MediaSummaryTest(parameterized.TestCase):
       mock_all_metrics.return_value = summary_metrics
       plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
 
+    self.assertIsInstance(plot, alt.LayerChart)
+    self.assertLen(plot.layer, 2)
+    positive_areas, negative_areas = plot.layer
+    self.assertEqual(positive_areas.mark, "area")
+    self.assertEqual(
+        positive_areas.encoding.y.shorthand, "positive_stack_end:Q"
+    )
+    self.assertEqual(
+        positive_areas.encoding.y2.shorthand, "positive_stack_start"
+    )
+    self.assertEqual(positive_areas.encoding.y["title"], "Revenue")
+    self.assertEqual(negative_areas.mark, "area")
+    self.assertEqual(
+        negative_areas.encoding.y.shorthand, "negative_stack_end:Q"
+    )
+    self.assertEqual(
+        negative_areas.encoding.y2.shorthand, "negative_stack_start"
+    )
+    self.assertEqual(negative_areas.encoding.y["title"], "Revenue")
+
     encoding = plot.encoding
-    self.assertEqual(encoding.y.shorthand, f"{c.INCREMENTAL_OUTCOME}:Q")
-    self.assertEqual(encoding.y["title"], "Revenue")
     self.assertEqual(encoding.color.shorthand, f"{c.CHANNEL}:N")
     self.assertIsNone(encoding.color["legend"]["title"])
-    self.assertIsNotNone(encoding.order)
-    self.assertEqual(encoding.order["sort"], "descending")
     self.assertIsNotNone(encoding.tooltip)
+
+  def test_plot_channel_contribution_area_chart_is_valid_vega_lite(self):
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
+    with mock.patch.object(
+        visualizer.MediaSummary, "get_all_summary_metrics"
+    ) as mock_all_metrics:
+      mock_all_metrics.return_value = summary_metrics
+      plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    # Altair validates the chart against the Vega-Lite schema here.
+    spec = plot.to_dict()
+
+    self.assertLen(spec["layer"], 2)
+    self.assertLen(spec["params"], 2)
 
   def test_plot_channel_contribution_area_chart_encoding_x_axis_quarterly(self):
     summary_metrics = test_utils.generate_all_summary_metrics(
@@ -2396,6 +2437,12 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertFalse(encoding.x["axis"]["grid"])
     self.assertEqual(encoding.x["axis"]["tickCount"], 8)
     self.assertEqual(encoding.x["axis"]["domainColor"], c.GREY_300)
+    # Days that are not the first of a month are only ticks when zoomed in.
+    self.assertEqual(
+        encoding.x["axis"]["labelExpr"],
+        "date(datum.value) === 1 ? datum.label : timeFormat(datum.value, '%b"
+        " %d')",
+    )
 
     self.assertIsInstance(encoding.tooltip, list)
     self.assertLen(encoding.tooltip, 3)
@@ -2422,6 +2469,7 @@ class MediaSummaryTest(parameterized.TestCase):
     self.assertFalse(encoding.x["axis"]["grid"])
     self.assertEqual(encoding.x["axis"]["tickCount"], 8)
     self.assertEqual(encoding.x["axis"]["domainColor"], c.GREY_300)
+    self.assertIs(encoding.x["axis"]["labelExpr"], alt.Undefined)
 
     self.assertIsInstance(encoding.tooltip, list)
     self.assertLen(encoding.tooltip, 3)
@@ -2442,16 +2490,18 @@ class MediaSummaryTest(parameterized.TestCase):
       plot_revenue = (
           self.media_summary_revenue.plot_channel_contribution_area_chart()
       )
-    self.assertEqual(plot_kpi.encoding.y["title"], "KPI")
-    self.assertEqual(plot_revenue.encoding.y["title"], "Revenue")
-    self.assertEqual(
-        plot_kpi.encoding.y["axis"]["labelExpr"],
-        formatter.compact_number_expr(currency=""),
-    )
-    self.assertEqual(
-        plot_revenue.encoding.y["axis"]["labelExpr"],
-        formatter.compact_number_expr(currency="$"),
-    )
+    for layer in plot_kpi.layer:
+      self.assertEqual(layer.encoding.y["title"], "KPI")
+      self.assertEqual(
+          layer.encoding.y["axis"]["labelExpr"],
+          formatter.compact_number_expr(currency=""),
+      )
+    for layer in plot_revenue.layer:
+      self.assertEqual(layer.encoding.y["title"], "Revenue")
+      self.assertEqual(
+          layer.encoding.y["axis"]["labelExpr"],
+          formatter.compact_number_expr(currency="$"),
+      )
 
   def test_media_summary_plot_channel_contribution_area_chart_with_currency_code(
       self,
@@ -2472,74 +2522,540 @@ class MediaSummaryTest(parameterized.TestCase):
             self.media_summary_revenue._meridian, use_kpi=False
         )
         plot = media_summary_eur.plot_channel_contribution_area_chart()
-        self.assertEqual(
-            plot.encoding.y["axis"]["labelExpr"],
-            formatter.compact_number_expr(currency="€"),
-        )
+        for layer in plot.layer:
+          self.assertEqual(
+              layer.encoding.y["axis"]["labelExpr"],
+              formatter.compact_number_expr(currency="€"),
+          )
 
-  def test_media_summary_plot_channel_contribution_area_chart_baseline_min(
-      self,
-  ):
-    summary_metrics = xr.Dataset(
+  def _contribution_summary_metrics_by_time(self) -> xr.Dataset:
+    """Returns summary metrics by time with a total outcome of 1000 per time."""
+    return xr.Dataset(
         data_vars={
             c.INCREMENTAL_OUTCOME: (
                 [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
                 np.array([
-                    [[[500]], [[2000]], [[1500]], [[400]]],
-                    [[[600]], [[1800]], [[1200]], [[360]]],
-                    [[[400]], [[2200]], [[1600]], [[-1]]],
+                    [[[100.0]], [[50.0]], [[150.0]]],
+                    [[[200.0]], [[50.0]], [[250.0]]],
+                    [[[300.0]], [[100.0]], [[400.0]]],
                 ]),
             ),
             c.PCT_OF_CONTRIBUTION: (
                 [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
                 np.array([
-                    [[[5]], [[20]], [[15]], [[10]]],
-                    [[[6]], [[18]], [[12]], [[9]]],
-                    [[[4]], [[22]], [[16]], [[1]]],
+                    [[[10.0]], [[5.0]], [[15.0]]],
+                    [[[20.0]], [[5.0]], [[25.0]]],
+                    [[[30.0]], [[10.0]], [[40.0]]],
                 ]),
             ),
             c.EFFECTIVENESS: (
                 [c.TIME, c.CHANNEL, c.METRIC, c.DISTRIBUTION],
-                np.zeros(shape=(3, 4, 1, 1)),
+                np.zeros(shape=(3, 3, 1, 1)),
             ),
         },
         coords={
             c.TIME: ["2023-01-01", "2023-01-08", "2023-01-15"],
-            c.CHANNEL: ["1", "2", "3", c.ALL_CHANNELS],
+            c.CHANNEL: ["ch_0", "ch_1", c.ALL_CHANNELS],
             c.METRIC: [c.MEAN],
             c.DISTRIBUTION: [c.POSTERIOR],
         },
         attrs={c.CONFIDENCE_LEVEL: c.DEFAULT_CONFIDENCE_LEVEL},
     )
 
+  def _set_control_variables(self, control_variables: list[str]):
+    """Gives the revenue model control variables and channels `ch_0`, `ch_1`."""
+    self.input_data_1.control_variable = xr.DataArray(
+        control_variables,
+        dims=[c.CONTROL_VARIABLE],
+        coords={c.CONTROL_VARIABLE: control_variables},
+    )
+    self.input_data_1.get_all_channels.return_value = np.array(["ch_0", "ch_1"])
+
+  def _patch_control_contributions(
+      self, mean_contributions: np.ndarray
+  ) -> mock.MagicMock:
+    """Patches the Analyzer to return draws with the given posterior mean."""
+    draws = np.stack([mean_contributions + 7.0, mean_contributions - 7.0])
+    return self.enter_context(
+        mock.patch.object(
+            analyzer.Analyzer,
+            "control_contributions",
+            autospec=True,
+            return_value=backend.to_tensor(draws[np.newaxis]),
+        )
+    )
+
+  def _contribution_by_channel(
+      self, df: pd.DataFrame, metric: str
+  ) -> dict[str, list[float]]:
+    """Returns the metric of each channel in chronological order."""
+    return {
+        str(channel): rows.sort_values(c.TIME)[metric].tolist()
+        for channel, rows in df.groupby(c.CHANNEL)
+    }
+
+  def test_contribution_metrics_separate_controls_by_time(self):
+    self._set_control_variables(["control_0", "control_1"])
+    mock_control_contributions = self._patch_control_contributions(
+        np.array([[100.0, 10.0], [-50.0, 20.0], [0.0, 30.0]])
+    )
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    df = self.media_summary_revenue.contribution_metrics(
+        include_non_paid=True, aggregate_times=False, separate_controls=True
+    )
+
+    self.assertEqual(
+        list(df.columns),
+        [c.TIME, c.CHANNEL, c.INCREMENTAL_OUTCOME, c.PCT_OF_CONTRIBUTION],
+    )
+    outcome = self._contribution_by_channel(df, c.INCREMENTAL_OUTCOME)
+    self.assertCountEqual(
+        outcome, [c.BASELINE, "ch_0", "ch_1", "control_0", "control_1"]
+    )
+    np.testing.assert_allclose(outcome["control_0"], [100.0, -50.0, 0.0])
+    np.testing.assert_allclose(outcome["control_1"], [10.0, 20.0, 30.0])
+    # The baseline with the controls is 850, 750 and 600.
+    np.testing.assert_allclose(outcome[c.BASELINE], [740.0, 780.0, 570.0])
+    np.testing.assert_allclose(outcome["ch_0"], [100.0, 200.0, 300.0])
+    pct = self._contribution_by_channel(df, c.PCT_OF_CONTRIBUTION)
+    np.testing.assert_allclose(pct["control_0"], [0.1, -0.05, 0.0])
+    np.testing.assert_allclose(pct["control_1"], [0.01, 0.02, 0.03])
+    np.testing.assert_allclose(pct[c.BASELINE], [0.74, 0.78, 0.57])
+    # The contributions of each time period still add up to the total outcome.
+    np.testing.assert_allclose(
+        df.groupby(c.TIME)[c.INCREMENTAL_OUTCOME].sum(), [1000.0] * 3
+    )
+    mock_control_contributions.assert_called_once_with(
+        mock.ANY, selected_times=None, aggregate_times=False, use_kpi=False
+    )
+
+  def test_contribution_metrics_separate_controls_aggregated(self):
+    self._set_control_variables(["control_0", "control_1"])
+    mock_control_contributions = self._patch_control_contributions(
+        np.array([50.0, -20.0])
+    )
+    summary_metrics = (
+        self._contribution_summary_metrics_by_time()
+        .isel(time=0)
+        .drop_vars(c.TIME)
+    )
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=summary_metrics,
+        )
+    )
+
+    df = self.media_summary_revenue.contribution_metrics(
+        include_non_paid=True, separate_controls=True
+    )
+
+    self.assertEqual(
+        list(df.columns),
+        [c.CHANNEL, c.INCREMENTAL_OUTCOME, c.PCT_OF_CONTRIBUTION],
+    )
+    df = df.set_index(c.CHANNEL)
+    # The baseline with the controls is 850.
+    np.testing.assert_allclose(
+        df[c.INCREMENTAL_OUTCOME][
+            [c.BASELINE, "ch_0", "ch_1", "control_0", "control_1"]
+        ],
+        [820.0, 100.0, 50.0, 50.0, -20.0],
+    )
+    np.testing.assert_allclose(
+        df[c.PCT_OF_CONTRIBUTION][[c.BASELINE, "control_0", "control_1"]],
+        [0.82, 0.05, -0.02],
+    )
+    mock_control_contributions.assert_called_once_with(
+        mock.ANY, selected_times=None, aggregate_times=True, use_kpi=False
+    )
+
+  def test_contribution_metrics_separate_controls_unordered_selected_times(
+      self,
+  ):
+    self._set_control_variables(["control_0"])
+    # The Analyzer returns the time periods in chronological order.
+    mock_control_contributions = self._patch_control_contributions(
+        np.array([[100.0], [-50.0]])
+    )
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+    selected_times = ["2023-01-15", "2023-01-01"]
+    media_summary = visualizer.MediaSummary(
+        self.meridian_revenue, selected_times=selected_times
+    )
+
+    df = media_summary.contribution_metrics(
+        include_non_paid=True, aggregate_times=False, separate_controls=True
+    )
+
+    outcome = self._contribution_by_channel(df, c.INCREMENTAL_OUTCOME)
+    np.testing.assert_allclose(outcome["control_0"], [100.0, -50.0])
+    # The baseline with the controls is 850 and 600.
+    np.testing.assert_allclose(outcome[c.BASELINE], [750.0, 650.0])
+    mock_control_contributions.assert_called_once_with(
+        mock.ANY,
+        selected_times=selected_times,
+        aggregate_times=False,
+        use_kpi=False,
+    )
+
+  def test_contribution_metrics_control_named_like_channel_gets_suffix(self):
+    self._set_control_variables(["ch_0", c.BASELINE, "control_2"])
+    self._patch_control_contributions(np.array([1.0, 2.0, 3.0]))
+    summary_metrics = (
+        self._contribution_summary_metrics_by_time()
+        .isel(time=0)
+        .drop_vars(c.TIME)
+    )
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=summary_metrics,
+        )
+    )
+
+    df = self.media_summary_revenue.contribution_metrics(
+        include_non_paid=True, separate_controls=True
+    )
+
+    self.assertCountEqual(
+        df[c.CHANNEL],
+        [
+            c.BASELINE,
+            "ch_0",
+            "ch_1",
+            "ch_0 (control)",
+            f"{c.BASELINE} (control)",
+            "control_2",
+        ],
+    )
+
+  def test_contribution_metrics_does_not_separate_controls_by_default(self):
+    self._set_control_variables(["control_0", "control_1"])
+    mock_control_contributions = self._patch_control_contributions(
+        np.array([[100.0, 10.0], [-50.0, 20.0], [0.0, 30.0]])
+    )
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    df = self.media_summary_revenue.contribution_metrics(
+        include_non_paid=True, aggregate_times=False
+    )
+
+    outcome = self._contribution_by_channel(df, c.INCREMENTAL_OUTCOME)
+    self.assertCountEqual(outcome, [c.BASELINE, "ch_0", "ch_1"])
+    np.testing.assert_allclose(outcome[c.BASELINE], [850.0, 750.0, 600.0])
+    mock_control_contributions.assert_not_called()
+
+  def test_contribution_metrics_separate_controls_model_without_controls(self):
+    self.input_data_1.control_variable = None
+    mock_control_contributions = self._patch_control_contributions(
+        np.array([[100.0], [-50.0], [0.0]])
+    )
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    df = self.media_summary_revenue.contribution_metrics(
+        include_non_paid=True, aggregate_times=False, separate_controls=True
+    )
+
+    outcome = self._contribution_by_channel(df, c.INCREMENTAL_OUTCOME)
+    self.assertCountEqual(outcome, [c.BASELINE, "ch_0", "ch_1"])
+    np.testing.assert_allclose(outcome[c.BASELINE], [850.0, 750.0, 600.0])
+    mock_control_contributions.assert_not_called()
+
+  def test_plot_channel_contribution_area_chart_separates_controls(self):
+    self._set_control_variables(["control_1", "control_0"])
+    self._patch_control_contributions(
+        np.array([[100.0, 10.0], [-50.0, 20.0], [0.0, 30.0]])
+    )
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    plot_df = typing.cast(pd.DataFrame, plot.data)
+    self.assertCountEqual(
+        plot_df[c.CHANNEL].unique(),
+        [c.BASELINE, "ch_0", "ch_1", "control_0", "control_1"],
+    )
+    # The channels keep their place in the legend, and so their colors. The
+    # control variables follow them, in the order of the model.
+    legend_order = [c.BASELINE, "ch_0", "ch_1", "control_1", "control_0"]
+    self.assertEqual(plot.encoding.color["scale"]["domain"], legend_order)
+    self.assertEqual(plot.encoding.color["sort"], legend_order)
+    # The baseline and the channels have the default colors, and the control
+    # variables are grey.
+    self.assertEqual(
+        plot.encoding.color["scale"]["range"],
+        ["#4c78a8", "#f58518", "#e45756", c.GREY_700, c.GREY_600],
+    )
+    # The stack is sorted by descending index: the baseline is at the bottom,
+    # then the control variables, then the channels.
+    self.assertEqual(
+        plot.transform[0].to_dict(),
+        {
+            "calculate": (
+                'indexof(["ch_0", "ch_1", "control_1", "control_0",'
+                ' "baseline"], datum.channel)'
+            ),
+            "as": "sort_channel",
+        },
+    )
+
+  def test_plot_channel_contribution_area_chart_many_channels_colors(self):
+    self._set_control_variables(["control_0"])
+    self._patch_control_contributions(np.zeros((5, 1)))
+    # These summary metrics have 12 channels, which with the baseline is more
+    # than the 10 default colors.
+    summary_metrics = test_utils.generate_all_summary_metrics(
+        aggregate_times=False
+    )
     with mock.patch.object(
         visualizer.MediaSummary,
         "get_all_summary_metrics",
         return_value=summary_metrics,
-    ) as _:
+    ):
       plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
 
-    # Calculate the expected minimum y-value by finding the minimum baseline
-    # outcome across all time periods.
-    total_media_criteria = {
-        c.DISTRIBUTION: c.POSTERIOR,
-        c.METRIC: c.MEAN,
-        c.CHANNEL: c.ALL_CHANNELS,
-        c.TIME: summary_metrics.time,
-    }
-    total_media_outcome = summary_metrics[c.INCREMENTAL_OUTCOME].sel(
-        total_media_criteria
-    )
-    total_media_pct = (
-        summary_metrics[c.PCT_OF_CONTRIBUTION].sel(total_media_criteria) / 100
-    )
-    total_outcome = total_media_outcome / total_media_pct
-    baseline_pct = 1 - total_media_pct
-    baseline_outcome = total_outcome * baseline_pct
-    expected_min_y = baseline_outcome.min()
+    colors = plot.encoding.color["scale"]["range"]
+    self.assertLen(colors, 14)
+    # The default colors repeat for the channels, as they do without control
+    # variables, and the control variable does not take the next one.
+    self.assertEqual(colors[10:13], colors[:3])
+    self.assertEqual(colors[13], c.GREY_700)
 
-    self.assertEqual(plot.encoding.y["scale"]["domainMin"], expected_min_y)
-    self.assertTrue(plot.encoding.y["scale"]["clamp"])
+  def test_plot_channel_contribution_area_chart_keeps_controls_in_baseline(
+      self,
+  ):
+    self._set_control_variables(["control_0", "control_1"])
+    mock_control_contributions = self._patch_control_contributions(
+        np.array([[100.0, 10.0], [-50.0, 20.0], [0.0, 30.0]])
+    )
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    plot = self.media_summary_revenue.plot_channel_contribution_area_chart(
+        separate_controls=False
+    )
+
+    plot_df = typing.cast(pd.DataFrame, plot.data)
+    self.assertCountEqual(
+        plot_df[c.CHANNEL].unique(), [c.BASELINE, "ch_0", "ch_1"]
+    )
+    self.assertEqual(
+        plot.encoding.color["scale"]["domain"], [c.BASELINE, "ch_0", "ch_1"]
+    )
+    self.assertIs(plot.encoding.color["scale"]["range"], alt.Undefined)
+    mock_control_contributions.assert_not_called()
+
+  def test_plot_channel_contribution_area_chart_y_axis_minimum_is_not_fixed(
+      self,
+  ):
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    for layer in plot.layer:
+      self.assertIs(layer.encoding.y["scale"], alt.Undefined)
+
+  def test_plot_channel_contribution_area_chart_stacks_signs_separately(self):
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    plot = self.media_summary_revenue.plot_channel_contribution_area_chart(
+        enable_variable_filter=False
+    )
+
+    stack_sort = [{"field": "sort_channel", "order": "descending"}]
+    self.assertEqual(
+        [transform.to_dict() for transform in plot.transform],
+        [
+            {
+                "calculate": (
+                    'indexof(["ch_0", "ch_1", "baseline"], datum.channel)'
+                ),
+                "as": "sort_channel",
+            },
+            {
+                "calculate": "max(datum.incremental_outcome, 0)",
+                "as": "positive_outcome",
+            },
+            {
+                "calculate": "min(datum.incremental_outcome, 0)",
+                "as": "negative_outcome",
+            },
+            {
+                "stack": "positive_outcome",
+                "groupby": [c.TIME],
+                "sort": stack_sort,
+                "as": ["positive_stack_start", "positive_stack_end"],
+            },
+            {
+                "stack": "negative_outcome",
+                "groupby": [c.TIME],
+                "sort": stack_sort,
+                "as": ["negative_stack_start", "negative_stack_end"],
+            },
+        ],
+    )
+
+  def _area_chart_params(self, **kwargs) -> dict[str, list[dict[str, Any]]]:
+    """Returns the area chart's parameters by the type of their selection."""
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+    plot = self.media_summary_revenue.plot_channel_contribution_area_chart(
+        **kwargs
+    )
+    spec = plot.to_dict()
+    params = {"interval": [], "point": [], "filter": []}
+    for param in spec.get("params", []):
+      params[param["select"]["type"]].append(param)
+    params["filter"] = [
+        transform for transform in spec["transform"] if "filter" in transform
+    ]
+    return params
+
+  def test_plot_channel_contribution_area_chart_zoom(self):
+    params = self._area_chart_params()
+
+    self.assertLen(params["interval"], 1)
+    zoom = params["interval"][0]
+    self.assertEqual(zoom["bind"], "scales")
+    self.assertEqual(
+        zoom["select"],
+        {"type": "interval", "encodings": ["x", "y"], "clear": "dblclick"},
+    )
+
+  def test_plot_channel_contribution_area_chart_zoom_disabled(self):
+    params = self._area_chart_params(enable_zoom=False)
+
+    self.assertEmpty(params["interval"])
+    self.assertLen(params["point"], 1)
+
+  def test_plot_channel_contribution_area_chart_zoom_disabled_x_axis_labels(
+      self,
+  ):
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    plot = self.media_summary_revenue.plot_channel_contribution_area_chart(
+        enable_zoom=False
+    )
+
+    self.assertIs(plot.encoding.x["axis"]["labelExpr"], alt.Undefined)
+
+  def test_plot_channel_contribution_area_chart_variable_filter(self):
+    params = self._area_chart_params()
+
+    self.assertLen(params["point"], 1)
+    variable_filter = params["point"][0]
+    self.assertEqual(variable_filter["bind"], "legend")
+    # A click on a legend entry toggles that variable, and a double-click,
+    # which resets the zoom, does not clear the selection.
+    self.assertEqual(
+        variable_filter["select"],
+        {
+            "type": "point",
+            "fields": [c.CHANNEL],
+            "toggle": "true",
+            "clear": False,
+        },
+    )
+    # Every variable is selected at first, so that a click hides a variable.
+    self.assertEqual(
+        variable_filter["value"],
+        [{c.CHANNEL: c.BASELINE}, {c.CHANNEL: "ch_0"}, {c.CHANNEL: "ch_1"}],
+    )
+    self.assertEqual(
+        params["filter"], [{"filter": {"param": variable_filter["name"]}}]
+    )
+
+  def test_plot_channel_contribution_area_chart_variable_filter_before_stack(
+      self,
+  ):
+    self.enter_context(
+        mock.patch.object(
+            visualizer.MediaSummary,
+            "get_all_summary_metrics",
+            return_value=self._contribution_summary_metrics_by_time(),
+        )
+    )
+
+    plot = self.media_summary_revenue.plot_channel_contribution_area_chart()
+
+    # The variables that are not hidden are stacked again.
+    transforms = [transform.to_dict() for transform in plot.transform]
+    filter_index = next(
+        i for i, transform in enumerate(transforms) if "filter" in transform
+    )
+    first_stack_index = next(
+        i for i, transform in enumerate(transforms) if "stack" in transform
+    )
+    self.assertLess(filter_index, first_stack_index)
+
+  def test_plot_channel_contribution_area_chart_variable_filter_disabled(self):
+    params = self._area_chart_params(enable_variable_filter=False)
+
+    self.assertEmpty(params["point"])
+    self.assertEmpty(params["filter"])
+    self.assertLen(params["interval"], 1)
 
   def test_media_summary_plot_channel_contribution_bump_chart_encoding(self):
     summary_metrics = test_utils.generate_all_summary_metrics(

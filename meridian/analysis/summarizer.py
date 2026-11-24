@@ -300,11 +300,18 @@ class Summarizer:
         else c.QUARTERLY
     )
 
+    channel_contrib_area_chart_description = (
+        summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION.format(
+            outcome=outcome
+        )
+    )
+    if self._meridian.n_controls > 0:
+      channel_contrib_area_chart_description += (
+          ' ' + summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_CONTROLS_DESCRIPTION
+      )
     channel_contrib_area_chart = formatter.ChartSpec(
         id=summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_ID,
-        description=summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION.format(
-            outcome=outcome
-        ),
+        description=channel_contrib_area_chart_description,
         chart_json=media_summary.plot_channel_contribution_area_chart(
             time_granularity=time_granularity
         ).to_json(),

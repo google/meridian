@@ -51,7 +51,12 @@ CHANNEL_CONTRIB_BY_TIME_CHART_TITLE = (
 )
 CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION = """Note: This chart shows the
 estimated incremental {outcome} attributed to each channel and the baseline over
-the selected time period. It helps visualize how contributions have changed."""
+the selected time period. It helps visualize how contributions have changed.
+Drag the chart to pan, scroll to zoom, and double-click to reset the view. Click
+a legend entry to hide or show that variable."""
+CHANNEL_CONTRIB_BY_TIME_CHART_CONTROLS_DESCRIPTION = """Each control variable is
+shown separately from the baseline. Its contribution is measured against the
+average level of that variable, so it can be negative."""
 
 CHANNEL_CONTRIB_RANK_CHART_ID = 'channel-contrib-rank-chart'
 CHANNEL_CONTRIB_RANK_CHART_TITLE = (

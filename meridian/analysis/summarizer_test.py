@@ -176,6 +176,8 @@ class SummarizerTest(parameterized.TestCase):
     self.reach_frequency.optimal_frequency_data = frequency_data
     self.mock_meridian_revenue.n_rf_channels = 2
     self.mock_meridian_kpi.n_rf_channels = 2
+    self.mock_meridian_revenue.n_controls = 0
+    self.mock_meridian_kpi.n_controls = 0
 
     # Stub `input_data.time` property.
     response = xr.DataArray(
@@ -611,6 +613,33 @@ class SummarizerTest(parameterized.TestCase):
         charts.append((chart_id, chart_description_text))
 
     self.assertEqual(set(expected_chart_tuples), set(charts))
+
+  def test_channel_contrib_by_time_chart_description_with_controls(self):
+    self.mock_meridian_revenue.n_controls = 2
+
+    summary_html_dom = self._get_output_model_results_summary_html_dom(
+        summarizer_outcome=self.summarizer_revenue,
+    )
+
+    card = test_utils.get_child_element(
+        summary_html_dom,
+        'body/cards/card',
+        attribs={'id': summary_text.CHANNEL_CONTRIB_CARD_ID},
+    )
+    descriptions = {}
+    for chart in card.findall('charts/chart'):
+      chart_id = test_utils.get_child_element(chart, 'chart-embed').attrib['id']
+      description = chart.findtext('chart-description')
+      if description is not None:
+        descriptions[chart_id] = description.strip()
+    self.assertEqual(
+        descriptions[summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_ID],
+        summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_DESCRIPTION.format(
+            outcome=c.REVENUE
+        )
+        + ' '
+        + summary_text.CHANNEL_CONTRIB_BY_TIME_CHART_CONTROLS_DESCRIPTION,
+    )
 
   def test_model_fit_card_custom_date_range(self):
     mock_spec = 'model_fit'

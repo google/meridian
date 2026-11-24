@@ -201,6 +201,26 @@ class AnalyzerNationalTest(backend_test_utils.MeridianTestCase):
         inference_data=cls.inference_data_national,
     )
 
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="by_time",
+          aggregate_times=False,
+          expected_shape=(_N_CHAINS, _N_KEEP, _N_TIMES, _N_CONTROLS),
+      ),
+      dict(
+          testcase_name="aggregated",
+          aggregate_times=True,
+          expected_shape=(_N_CHAINS, _N_KEEP, _N_CONTROLS),
+      ),
+  )
+  def test_control_contributions_national_returns_correct_shape(
+      self, aggregate_times: bool, expected_shape: tuple[int, ...]
+  ):
+    contributions = self.analyzer_national.control_contributions(
+        aggregate_times=aggregate_times
+    )
+    self.assertEqual(contributions.shape, expected_shape)
+
   def test_rhat_summary_national_correct(self):
     rhat_summary = self.analyzer_national.rhat_summary()
     expected_param_names = set(
@@ -1423,6 +1443,151 @@ class AnalyzerTest(backend_test_utils.MeridianTestCase):
         rtol=1e-3,
         atol=1e-3,
     )
+
+  @parameterized.product(
+      use_posterior=[False, True],
+      aggregate_geos=[False, True],
+      aggregate_times=[False, True],
+      geos_to_include=[None, ["geo_1", "geo_3"]],
+      times_to_include=[None, ["2021-04-19", "2021-09-13", "2021-12-13"]],
+  )
+  def test_control_contributions_returns_correct_shape(
+      self,
+      use_posterior: bool,
+      aggregate_geos: bool,
+      aggregate_times: bool,
+      geos_to_include: Sequence[str] | None,
+      times_to_include: Sequence[str] | None,
+  ):
+    contributions = self.analyzer.control_contributions(
+        use_posterior=use_posterior,
+        aggregate_geos=aggregate_geos,
+        aggregate_times=aggregate_times,
+        selected_geos=geos_to_include,
+        selected_times=times_to_include,
+    )
+    expected_shape = (_N_CHAINS, _N_KEEP) if use_posterior else (1, _N_DRAWS)
+    if not aggregate_geos:
+      expected_shape += (
+          (len(geos_to_include),) if geos_to_include is not None else (_N_GEOS,)
+      )
+    if not aggregate_times:
+      expected_shape += (
+          (len(times_to_include),)
+          if times_to_include is not None
+          else (_N_TIMES,)
+      )
+    expected_shape += (_N_CONTROLS,)
+    self.assertEqual(contributions.shape, expected_shape)
+
+  @parameterized.named_parameters(
+      dict(testcase_name="kpi", use_kpi=True),
+      dict(testcase_name="revenue", use_kpi=False),
+  )
+  def test_control_contributions_sum_to_controls_part_of_expected_outcome(
+      self, use_kpi: bool
+  ):
+    # The controls of this model are not scaled by population, so a control
+    # variable at its mean over all geos and time periods is zero after scaling,
+    # and the expected outcome with these controls has no contribution from
+    # them.
+    controls = np.asarray(self.input_data.controls)
+    mean_controls = np.broadcast_to(
+        controls.mean(axis=(0, 1), keepdims=True), controls.shape
+    )
+    kwargs = dict(aggregate_geos=False, aggregate_times=False, use_kpi=use_kpi)
+    expected_outcome = np.asarray(self.analyzer.expected_outcome(**kwargs))
+    expected_outcome_mean_controls = np.asarray(
+        self.analyzer.expected_outcome(
+            new_data=tensors.DataTensors(
+                controls=backend.to_tensor(mean_controls)
+            ),
+            **kwargs,
+        )
+    )
+
+    contributions = np.asarray(self.analyzer.control_contributions(**kwargs))
+
+    # The expected value is the difference of two large numbers, so the
+    # tolerance is relative to their size.
+    atol = 1e-4 * float(np.max(np.abs(expected_outcome)))
+    np.testing.assert_allclose(
+        contributions.sum(axis=-1),
+        expected_outcome - expected_outcome_mean_controls,
+        rtol=1e-3,
+        atol=atol,
+    )
+    self.assertGreater(float(np.max(np.abs(contributions))), 10 * atol)
+
+  def test_control_contributions_revenue_is_kpi_times_revenue_per_kpi(self):
+    kwargs = dict(aggregate_geos=False, aggregate_times=False)
+    kpi_contributions = self.analyzer.control_contributions(
+        use_kpi=True, **kwargs
+    )
+
+    revenue_contributions = self.analyzer.control_contributions(
+        use_kpi=False, **kwargs
+    )
+
+    revenue_per_kpi = np.asarray(self.input_data.revenue_per_kpi)
+    backend_test_utils.assert_allclose(
+        revenue_contributions,
+        np.asarray(kpi_contributions) * revenue_per_kpi[..., np.newaxis],
+        rtol=1e-4,
+    )
+
+  def test_control_contributions_selected_geos_and_times(self):
+    selected_geos = ["geo_1", "geo_3"]
+    # The selected time periods are returned in chronological order.
+    selected_times = ["2021-12-13", "2021-04-19", "2021-09-13"]
+    geo_indices = [
+        list(self.input_data.geo.values).index(geo) for geo in selected_geos
+    ]
+    time_indices = [
+        list(self.input_data.time.values).index(time)
+        for time in sorted(selected_times)
+    ]
+    all_contributions = np.asarray(
+        self.analyzer.control_contributions(
+            aggregate_geos=False, aggregate_times=False
+        )
+    )
+    expected = all_contributions[:, :, geo_indices][:, :, :, time_indices]
+
+    selected = self.analyzer.control_contributions(
+        selected_geos=selected_geos,
+        selected_times=selected_times,
+        aggregate_geos=False,
+        aggregate_times=False,
+    )
+    aggregated = self.analyzer.control_contributions(
+        selected_geos=selected_geos, selected_times=selected_times
+    )
+
+    backend_test_utils.assert_allclose(selected, expected, rtol=1e-5)
+    backend_test_utils.assert_allclose(
+        aggregated, expected.sum(axis=(2, 3)), rtol=1e-3, atol=1e-3
+    )
+
+  def test_control_contributions_does_not_depend_on_batch_size(self):
+    kwargs = dict(aggregate_geos=False, aggregate_times=False)
+    backend_test_utils.assert_allclose(
+        self.analyzer.control_contributions(batch_size=3, **kwargs),
+        self.analyzer.control_contributions(**kwargs),
+        rtol=1e-5,
+    )
+
+  def test_control_contributions_not_fitted_raises(self):
+    not_fitted_analyzer = analyzer.Analyzer(
+        model_context=self.meridian.model_context,
+        inference_data=az.InferenceData(),
+    )
+    with self.assertRaisesWithLiteralMatch(
+        errors.NotFittedModelError,
+        "sample_posterior() must be called prior to calling"
+        " `control_contributions()`.",
+    ):
+      not_fitted_analyzer.control_contributions()
 
   @parameterized.named_parameters(
       ("scaling_factor0", "scaling_factor0"),
@@ -6243,6 +6408,17 @@ class AnalyzerNotFittedTest(absltest.TestCase):
         "sample_posterior() must be called prior to calling this method.",
     ):
       not_fitted_analyzer.rhat_summary()
+
+  def test_control_contributions_no_controls_raises(self):
+    model_context = mock.create_autospec(context.ModelContext, instance=True)
+    model_context.controls_scaled = None
+    analyzer_no_controls = analyzer.Analyzer(
+        model_context=model_context, inference_data=az.InferenceData()
+    )
+    with self.assertRaisesRegex(
+        ValueError, r"requires a model with control variables\."
+    ):
+      analyzer_no_controls.control_contributions()
 
 
 class GatherByChannelTest(backend_test_utils.MeridianTestCase):

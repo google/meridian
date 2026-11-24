@@ -17,6 +17,7 @@
 from collections.abc import Sequence
 import functools
 import itertools
+import json
 from typing import Generator, Mapping
 import warnings
 import altair as alt
@@ -48,13 +49,44 @@ alt.data_transformers.disable_max_rows()
 # Field name for the zero-contribution legend entry in the bump chart.
 _ZERO_CONTRIBUTION_LEGEND_FIELD = 'zero_contribution_legend'
 
-# Time axis labels of the zoomable model fit plot. A tick on the first day of a
-# month keeps its year and month label. Any other day is only a tick once the
-# plot is zoomed in to a short time range, where it is labeled with its month
-# and day.
-_MODEL_FIT_ZOOM_TIME_LABEL_EXPR = (
+# Time axis labels of a zoomable plot whose time axis shows the year and the
+# month. A tick on the first day of a month keeps its year and month label. Any
+# other day is only a tick once the plot is zoomed in to a short time range,
+# where it is labeled with its month and day.
+_ZOOM_TIME_LABEL_EXPR = (
     "date(datum.value) === 1 ? datum.label : timeFormat(datum.value, '%b %d')"
 )
+
+# Suffix that tells a control variable apart from a channel with the same name
+# in the contribution metrics.
+_CONTROL_NAME_SUFFIX = ' (control)'
+
+# Colors of the channel contribution area chart when it plots control variables.
+# The baseline and the channels get Vega-Lite's default category colors, in the
+# order of the legend, which are the colors they have without control variables
+# and in the other contribution charts. The control variables get greys, which
+# sets them apart from the channels.
+_DEFAULT_CATEGORY_COLORS = (
+    '#4c78a8',
+    '#f58518',
+    '#e45756',
+    '#72b7b2',
+    '#54a24b',
+    '#eeca3b',
+    '#b279a2',
+    '#ff9da6',
+    '#9d755d',
+    '#bab0ac',
+)
+_CONTROL_COLORS = (c.GREY_700, c.GREY_600, c.GREY_900, c.GREY_300)
+
+# Fields that the channel contribution area chart computes to stack the positive
+# and the negative contributions separately.
+_POSITIVE_OUTCOME_FIELD = 'positive_outcome'
+_POSITIVE_STACK_FIELDS = ('positive_stack_start', 'positive_stack_end')
+_NEGATIVE_OUTCOME_FIELD = 'negative_outcome'
+_NEGATIVE_STACK_FIELDS = ('negative_stack_start', 'negative_stack_end')
+_STACK_ORDER_FIELD = 'sort_channel'
 
 
 def _get_channels_to_exclude(
@@ -559,9 +591,7 @@ class ModelFit:
                 tickCount=8,
                 domainColor=c.GREY_300,
                 labelExpr=(
-                    _MODEL_FIT_ZOOM_TIME_LABEL_EXPR
-                    if enable_zoom
-                    else alt.Undefined
+                    _ZOOM_TIME_LABEL_EXPR if enable_zoom else alt.Undefined
                 ),
             ),
         ),
@@ -1892,16 +1922,41 @@ class MediaSummary:
     self._non_media_baseline_values = non_media_baseline_values
 
   def plot_channel_contribution_area_chart(
-      self, time_granularity: str = c.QUARTERLY
-  ) -> alt.Chart:
-    """Plots a stacked area chart of the contribution share per channel by time.
+      self,
+      time_granularity: str = c.QUARTERLY,
+      *,
+      separate_controls: bool = True,
+      enable_zoom: bool = True,
+      enable_variable_filter: bool = True,
+  ) -> alt.LayerChart:
+    """Plots a stacked area chart of the contribution per channel by time.
+
+    Positive contributions are stacked upward from zero and negative
+    contributions are stacked downward from zero. The outcome axis fits the
+    plotted contributions.
+
+    By default, the plot is interactive. Drag to pan and scroll to zoom on both
+    the time and the outcome axes, and double-click to reset the view. Click a
+    legend entry to hide that variable, and click it again to show it. The
+    variables that remain are stacked again and the outcome axis is rescaled to
+    fit them.
 
     Args:
       time_granularity: The granularity for the time axis. Options are `weekly`
         or `quarterly`. Defaults to `quarterly`.
+      separate_controls: If `True`, the contribution of each control variable is
+        plotted as its own area instead of being part of the baseline. The
+        contribution of a control variable is measured against the mean of that
+        variable, so it can be negative. For details, see
+        `Analyzer.control_contributions()`. This has no effect if the model has
+        no control variables.
+      enable_zoom: If `True`, the plot can be panned and zoomed on both the time
+        and the outcome axes. If `False`, the plot has fixed axes.
+      enable_variable_filter: If `True`, clicking a legend entry hides or shows
+        that variable. If `False`, the legend is not interactive.
 
     Returns:
-      An Altair plot showing the contribution share per channel by time.
+      An Altair plot showing the contribution per channel by time.
 
     Raises:
       ValueError: If time_granularity is not one of the allowed constants.
@@ -1911,43 +1966,140 @@ class MediaSummary:
           f'time_granularity must be one of {c.TIME_GRANULARITIES}'
       )
 
-    x_axis_format = (
-        c.DATE_FORMAT if time_granularity == c.WEEKLY else c.QUARTER_FORMAT
-    )
+    is_quarterly = time_granularity == c.QUARTERLY
+    x_axis_format = c.QUARTER_FORMAT if is_quarterly else c.DATE_FORMAT
 
     outcome_df = self.contribution_metrics(
-        include_non_paid=True, aggregate_times=False
+        include_non_paid=True,
+        aggregate_times=False,
+        separate_controls=separate_controls,
     )
     outcome_df[c.TIME] = pd.to_datetime(outcome_df[c.TIME])
 
-    # Ensure proper ordering for the stacked area chart. Baseline should be at
-    # the bottom. Separate the *stacking* order from the *legend* order.
-    stack_order = sorted([
-        channel
-        for channel in outcome_df[c.CHANNEL].unique()
-        if channel != c.BASELINE
-    ]) + [c.BASELINE]
+    variables = set(outcome_df[c.CHANNEL].unique())
+    controls = (
+        [name for name in self._control_names() if name in variables]
+        if separate_controls
+        else []
+    )
+    channels = sorted(variables - set(controls) - {c.BASELINE})
+    # The baseline is at the bottom of the stack, with the control variables
+    # above it and the channels at the top. The *legend* order is separate from
+    # the *stacking* order: the control variables are last in the legend, so
+    # that the channels keep the colors they have in the other contribution
+    # charts.
+    stack_order = channels + controls + [c.BASELINE]
+    legend_order = [c.BASELINE] + channels + controls
+    if controls:
+      # Without this, the control variables would get the next default colors,
+      # which repeat the colors of the baseline and of the first channels once
+      # there are more variables than default colors.
+      color_scale = alt.Scale(
+          domain=legend_order,
+          range=[
+              *itertools.islice(
+                  itertools.cycle(_DEFAULT_CATEGORY_COLORS), 1 + len(channels)
+              ),
+              *itertools.islice(
+                  itertools.cycle(_CONTROL_COLORS), len(controls)
+              ),
+          ],
+      )
+    else:
+      color_scale = alt.Scale(domain=legend_order)
 
-    legend_order = [c.BASELINE] + sorted([
-        channel
-        for channel in outcome_df[c.CHANNEL].unique()
-        if channel != c.BASELINE
-    ])
+    def outcome_encoding(field: str) -> alt.Y:
+      return alt.Y(
+          f'{field}:Q',
+          title=(c.KPI.upper() if self._use_kpi else c.REVENUE.title()),
+          axis=alt.Axis(
+              ticks=False,
+              domain=False,
+              tickCount=5,
+              labelPadding=c.PADDING_10,
+              labelExpr=formatter.compact_number_expr(
+                  currency=self._currency if not self._use_kpi else ''
+              ),
+              **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
+          ),
+      )
 
-    # Get the minimum incremental outcome for baseline across all time periods
-    # as the lower bound for the stacked area chart.
-    min_y = (
-        outcome_df[outcome_df[c.CHANNEL] == c.BASELINE]
-        .groupby(c.TIME)[c.INCREMENTAL_OUTCOME]
-        .min()
-        .min()
+    # A stacked area that changes sign between two time periods would be drawn
+    # across the areas stacked on the other side of zero. To avoid that, the
+    # positive and the negative part of each contribution are stacked
+    # separately, and each has its own layer.
+    positive_stack_start, positive_stack_end = _POSITIVE_STACK_FIELDS
+    negative_stack_start, negative_stack_end = _NEGATIVE_STACK_FIELDS
+    positive_areas = (
+        alt.Chart()
+        .mark_area()
+        .encode(
+            y=outcome_encoding(positive_stack_end),
+            y2=alt.Y2(positive_stack_start),
+        )
+    )
+    negative_areas = (
+        alt.Chart()
+        .mark_area()
+        .encode(
+            y=outcome_encoding(negative_stack_end),
+            y2=alt.Y2(negative_stack_start),
+        )
     )
 
-    plot = (
-        alt.Chart(outcome_df, width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH)
-        .mark_area()
-        .transform_calculate(
-            sort_channel=f'indexof({stack_order}, datum.channel)'
+    variable_filter = None
+    if enable_variable_filter:
+      # Every variable starts out selected, so the first click on a legend entry
+      # removes that variable from the selection, which hides it, and the next
+      # click adds it back. A double-click resets the zoom, and must not reset
+      # this selection.
+      variable_filter = alt.selection_point(
+          fields=[c.CHANNEL],
+          bind='legend',
+          toggle='true',
+          clear=False,
+          value=[{c.CHANNEL: variable} for variable in legend_order],
+      )
+      positive_areas = positive_areas.add_params(variable_filter)
+    if enable_zoom:
+      # Binding an interval selection to the scales pans the plot on drag and
+      # zooms it on scroll, on both axes.
+      positive_areas = positive_areas.add_params(
+          alt.selection_interval(
+              bind='scales', encodings=['x', 'y'], clear='dblclick'
+          )
+      )
+
+    plot = alt.layer(
+        positive_areas,
+        negative_areas,
+        data=outcome_df,
+        width=c.VEGALITE_FACET_EXTRA_LARGE_WIDTH,
+    ).transform_calculate(**{
+        _STACK_ORDER_FIELD: (
+            f'indexof({json.dumps(stack_order)}, datum.{c.CHANNEL})'
+        )
+    })
+    if variable_filter is not None:
+      # Filtering before stacking makes the remaining variables stack again.
+      plot = plot.transform_filter(variable_filter)
+    stack_sort = [alt.SortField(_STACK_ORDER_FIELD, order='descending')]
+    return (
+        plot.transform_calculate(**{
+            _POSITIVE_OUTCOME_FIELD: f'max(datum.{c.INCREMENTAL_OUTCOME}, 0)',
+            _NEGATIVE_OUTCOME_FIELD: f'min(datum.{c.INCREMENTAL_OUTCOME}, 0)',
+        })
+        .transform_stack(
+            as_=list(_POSITIVE_STACK_FIELDS),
+            stack=_POSITIVE_OUTCOME_FIELD,
+            groupby=[c.TIME],
+            sort=stack_sort,
+        )
+        .transform_stack(
+            as_=list(_NEGATIVE_STACK_FIELDS),
+            stack=_NEGATIVE_OUTCOME_FIELD,
+            groupby=[c.TIME],
+            sort=stack_sort,
         )
         .encode(
             x=alt.X(
@@ -1958,22 +2110,12 @@ class MediaSummary:
                     grid=False,
                     tickCount=8,
                     domainColor=c.GREY_300,
-                ),
-            ),
-            y=alt.Y(
-                f'{c.INCREMENTAL_OUTCOME}:Q',
-                title=(c.KPI.upper() if self._use_kpi else c.REVENUE.title()),
-                axis=alt.Axis(
-                    ticks=False,
-                    domain=False,
-                    tickCount=5,
-                    labelPadding=c.PADDING_10,
-                    labelExpr=formatter.compact_number_expr(
-                        currency=self._currency if not self._use_kpi else ''
+                    labelExpr=(
+                        _ZOOM_TIME_LABEL_EXPR
+                        if enable_zoom and is_quarterly
+                        else alt.Undefined
                     ),
-                    **formatter.Y_AXIS_TITLE_CONFIG,  # pyrefly: ignore[bad-argument-type]
                 ),
-                scale=alt.Scale(domainMin=min_y, clamp=True),
             ),
             color=alt.Color(
                 f'{c.CHANNEL}:N',
@@ -1983,7 +2125,7 @@ class MediaSummary:
                     title=None,
                     orient='bottom',
                 ),
-                scale=alt.Scale(domain=legend_order),
+                scale=color_scale,
                 sort=legend_order,
             ),
             tooltip=[
@@ -1991,7 +2133,6 @@ class MediaSummary:
                 c.CHANNEL,
                 alt.Tooltip(f'{c.INCREMENTAL_OUTCOME}:Q', format=',.2f'),
             ],
-            order=alt.Order('sort_channel:N', sort='descending'),
         )
         .properties(
             title=formatter.custom_title_params(
@@ -2001,7 +2142,6 @@ class MediaSummary:
         .configure_axis(titlePadding=c.PADDING_10, **formatter.TEXT_CONFIG)
         .configure_view(strokeOpacity=0)
     )
-    return plot
 
   def plot_channel_contribution_bump_chart(
       self, time_granularity: str = c.QUARTERLY
@@ -2737,6 +2877,7 @@ class MediaSummary:
       selected_channels: Sequence[str] | None = None,
       include_non_paid: bool = False,
       aggregate_times: bool = True,
+      separate_controls: bool = False,
   ) -> pd.DataFrame:
     """Transforms the media metrics for the contribution plot.
 
@@ -2751,6 +2892,13 @@ class MediaSummary:
         non-media channels in the contribution plot. Defaults to `False`.
       aggregate_times: If `True`, aggregates the metrics across all time
         periods.  If `False`, returns time-varying metrics.
+      separate_controls: If `True`, the contribution of each control variable
+        has its own rows and is not part of the baseline. The contribution of a
+        control variable is measured against the mean of that variable, so it
+        can be negative. For details, see `Analyzer.control_contributions()`. A
+        control variable that has the name of a channel is suffixed with `"
+        (control)"`. This has no effect if the model has no control variables.
+        Defaults to `False`.
 
     Returns:
       A dataframe with contributions per channel.
@@ -2764,13 +2912,35 @@ class MediaSummary:
     contribution_df = self._calculate_contribution_dataframe(
         summary_metrics, selected_channels
     )
-    baseline_df = self._calculate_baseline_contribution_dataframe(
+    total_outcome, baseline_pct = self._total_outcome_and_baseline_pct(
         summary_metrics, aggregate_times
     )
-
-    combined_df = pd.concat([baseline_df, contribution_df]).reset_index(
-        drop=True
+    baseline_df = self._calculate_baseline_contribution_dataframe(
+        total_outcome, baseline_pct, aggregate_times
     )
+    contribution_dfs = [baseline_df, contribution_df]
+
+    control_names = self._control_names() if separate_controls else []
+    if control_names:
+      controls_df = self._calculate_controls_contribution_dataframe(
+          total_outcome, control_names, aggregate_times
+      )
+      # The baseline no longer includes what is reported for the control
+      # variables.
+      metrics = [c.INCREMENTAL_OUTCOME, c.PCT_OF_CONTRIBUTION]
+      if aggregate_times:
+        controls_total = controls_df[metrics].sum().to_numpy()
+      else:
+        controls_total = (
+            controls_df.groupby(c.TIME)[metrics]
+            .sum()
+            .loc[baseline_df[c.TIME]]
+            .to_numpy()
+        )
+      baseline_df[metrics] -= controls_total
+      contribution_dfs.append(controls_df)
+
+    combined_df = pd.concat(contribution_dfs).reset_index(drop=True)
     if aggregate_times:
       combined_df.sort_values(
           by=c.INCREMENTAL_OUTCOME, ascending=False, inplace=True
@@ -2818,10 +2988,10 @@ class MediaSummary:
     ].div(100)
     return contribution_df
 
-  def _calculate_baseline_contribution_dataframe(
+  def _total_outcome_and_baseline_pct(
       self, summary_metrics: xr.Dataset, aggregate_times: bool
-  ) -> pd.DataFrame:
-    """Calculates the baseline contribution dataframe.
+  ) -> tuple[xr.DataArray, xr.DataArray]:
+    """Calculates the total expected outcome and the baseline's share of it.
 
       Calculates a single total outcome and baseline if aggregating.
       Calculates time-varying total and baseline if not aggregating.
@@ -2831,13 +3001,9 @@ class MediaSummary:
       aggregate_times: Whether to aggregate times.
 
     Returns:
-      A DataFrame containing the baseline metrics.
-        Shape:
-          - If `aggregate_times=True`: (1, 3)
-            Columns: 'channel', 'incremental_outcome', 'pct_of_contribution'
-          - If `aggregate_times=False`: (n_times, 4)
-            Columns: 'time', 'channel', 'incremental_outcome',
-            'pct_of_contribution'
+      The posterior mean of the total expected outcome, and the share of it that
+      is the baseline, as a value between 0 and 1. Both have a `time` dimension
+      if `aggregate_times=False`, and are scalars otherwise.
     """
     total_media_criteria = {
         c.DISTRIBUTION: c.POSTERIOR,
@@ -2857,7 +3023,32 @@ class MediaSummary:
         summary_metrics[c.PCT_OF_CONTRIBUTION].sel(total_media_criteria) / 100
     )
     total_outcome = total_media_outcome / total_media_pct
-    baseline_pct = 1 - total_media_pct
+    return total_outcome, 1 - total_media_pct
+
+  def _calculate_baseline_contribution_dataframe(
+      self,
+      total_outcome: xr.DataArray,
+      baseline_pct: xr.DataArray,
+      aggregate_times: bool,
+  ) -> pd.DataFrame:
+    """Calculates the baseline contribution dataframe.
+
+    Args:
+      total_outcome: The total expected outcome, from
+        `_total_outcome_and_baseline_pct`.
+      baseline_pct: The share of the total expected outcome that is the
+        baseline, from `_total_outcome_and_baseline_pct`.
+      aggregate_times: Whether the times are aggregated.
+
+    Returns:
+      A DataFrame containing the baseline metrics.
+        Shape:
+          - If `aggregate_times=True`: (1, 3)
+            Columns: 'channel', 'incremental_outcome', 'pct_of_contribution'
+          - If `aggregate_times=False`: (n_times, 4)
+            Columns: 'time', 'channel', 'incremental_outcome',
+            'pct_of_contribution'
+    """
     baseline_outcome = total_outcome * baseline_pct
 
     if aggregate_times:
@@ -2871,11 +3062,91 @@ class MediaSummary:
       )
     else:
       return pd.DataFrame({
-          c.TIME: self._selected_times or summary_metrics.time.values,
+          c.TIME: total_outcome[c.TIME].values,
           c.CHANNEL: c.BASELINE,
           c.INCREMENTAL_OUTCOME: baseline_outcome.values,
           c.PCT_OF_CONTRIBUTION: baseline_pct.values,
       })
+
+  def _control_names(self) -> list[str]:
+    """Returns the names of the control variables in the contribution metrics.
+
+    A control variable that has the name of a channel, or of the baseline, gets
+    a suffix, so that its rows are not mixed up with the rows of that channel.
+
+    Returns:
+      The names in the order of the model's control variables. Empty if the
+      model has no control variables.
+    """
+    input_data = self._meridian.model_context.input_data
+    if input_data.control_variable is None:
+      return []
+    taken_names = {*input_data.get_all_channels(), c.BASELINE, c.ALL_CHANNELS}
+    return [
+        f'{name}{_CONTROL_NAME_SUFFIX}' if name in taken_names else str(name)
+        for name in input_data.control_variable.values
+    ]
+
+  def _calculate_controls_contribution_dataframe(
+      self,
+      total_outcome: xr.DataArray,
+      control_names: Sequence[str],
+      aggregate_times: bool,
+  ) -> pd.DataFrame:
+    """Calculates the contribution dataframe of the control variables.
+
+    Args:
+      total_outcome: The total expected outcome, from
+        `_total_outcome_and_baseline_pct`.
+      control_names: The names of the control variables, from `_control_names`.
+      aggregate_times: Whether to aggregate times.
+
+    Returns:
+      A DataFrame with the posterior mean contribution of each control variable.
+        Shape:
+          - If `aggregate_times=True`: (n_controls, 3)
+            Columns: 'channel', 'incremental_outcome', 'pct_of_contribution'
+          - If `aggregate_times=False`: (n_controls * n_times, 4)
+            Columns: 'time', 'channel', 'incremental_outcome',
+            'pct_of_contribution'
+    """
+    mean_contributions = np.mean(
+        np.asarray(
+            self._analyzer.control_contributions(
+                selected_times=self._selected_times,
+                aggregate_times=aggregate_times,
+                use_kpi=self._use_kpi,
+            )
+        ),
+        axis=(0, 1),
+    )
+    names = list(control_names)
+    if aggregate_times:
+      outcome = xr.DataArray(
+          mean_contributions, dims=[c.CHANNEL], coords={c.CHANNEL: names}
+      )
+    else:
+      times = total_outcome[c.TIME].values
+      # The Analyzer returns the selected time periods in chronological order,
+      # whatever their order in `selected_times`.
+      outcome = xr.DataArray(
+          mean_contributions,
+          dims=[c.TIME, c.CHANNEL],
+          coords={c.TIME: sorted(times), c.CHANNEL: names},
+      ).sel({c.TIME: times})
+    # `total_outcome` has the coordinates of the rows it was selected from,
+    # which include a `channel`, so they are dropped. The exact join fails on
+    # time periods that don't match, instead of leaving them out.
+    with xr.set_options(arithmetic_join='exact'):
+      pct_of_contribution = outcome / total_outcome.reset_coords(drop=True)
+    return (
+        xr.Dataset({
+            c.INCREMENTAL_OUTCOME: outcome,
+            c.PCT_OF_CONTRIBUTION: pct_of_contribution,
+        })
+        .to_dataframe(dim_order=list(outcome.dims))
+        .reset_index()
+    )
 
   def _transform_contribution_spend_metrics(self) -> pd.DataFrame:
     """Transforms the media metrics for the spend vs contribution plot.
