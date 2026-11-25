@@ -23,6 +23,7 @@ To release a new version (e.g. from `1.0.0` -> `2.0.0`):
 
 ## [Unreleased]
 
+*   Update `mmm-proto-schema` dependency to >= 1.8.0.
 *   `MarketingProcessor` now populates `Outcome.marginal_cost_per_contribution`
     (e.g. marginal CPA) from the `mcpik` media summary metric, using the
     median as the point estimate like `cost_per_contribution`. As with
