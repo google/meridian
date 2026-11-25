@@ -77,6 +77,7 @@ class WeeklyOptimizationGrid:
   max_constraint_variation: float
   use_optimal_frequency: bool = True
   max_frequency: float | None = None
+  _data_fingerprint: str | None = None
 
   @classmethod
   def create(
@@ -491,6 +492,9 @@ class WeeklyOptimizationGrid:
         use_optimal_frequency=use_optimal_frequency,
         max_frequency=max_frequency,
         rf_incremental_outcome=rf_incremental_outcome,
+        _data_fingerprint=optimizer._get_optimization_data_fingerprint(  # pylint: disable=protected-access
+            filled_data
+        ),
     )
 
   @staticmethod
@@ -1096,6 +1100,7 @@ class WeeklyOptimizationGrid:
         optimal_frequency=optimal_frequency,
         selected_geos=None,
         selected_times=selected_times,
+        _data_fingerprint=self._data_fingerprint,
     )
 
   def _create_grids(
@@ -1320,4 +1325,13 @@ class WeeklyOptimizationGrid:
         use_optimal_frequency=first.use_optimal_frequency,
         max_frequency=first.max_frequency,
         rf_incremental_outcome=combined_rf_outcome,
+        # Different source data cannot be verified as a single scenario. Leave
+        # provenance unknown so BudgetOptimizer rebuilds rather than reusing it.
+        _data_fingerprint=(
+            first._data_fingerprint
+            if all(
+                g._data_fingerprint == first._data_fingerprint for g in grids
+            )
+            else None
+        ),
     )
