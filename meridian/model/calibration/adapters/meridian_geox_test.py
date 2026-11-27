@@ -16,7 +16,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 import datetime
+import enum
 import sys
+import types
 from typing import TYPE_CHECKING
 import unittest
 from unittest import mock
@@ -51,13 +53,36 @@ else:  # pylint: disable=unreachable
         for k, v in kwargs.items():
           setattr(self, k, v)
 
+    class DummyAnalysisConfig(DummyContainer):
+      design = None
+
+    class DummyDesign(DummyContainer):
+      design_config = None
+
+    class DummyDesignConfig(DummyContainer):
+      time_granularity = None
+
+    class DummyGranularitySpec(DummyContainer):
+      interval_days = 1
+
+    class DummyTimeGranularity(enum.Enum):
+      DAILY = 1
+      WEEKLY = 2
+
     # pylint: disable=invalid-name
     class GeoxApiModuleSpec:
       Estimate = DummyContainer
       DescriptiveMetrics = DummyContainer
       AnalysisMetrics = DummyContainer
-      AnalysisConfig = DummyContainer
+      AnalysisConfig = DummyAnalysisConfig
       AnalysisResult = DummyContainer
+      DesignConfig = DummyDesignConfig
+      Design = DummyDesign
+      TimeGranularity = DummyTimeGranularity
+      GRANULARITY_SPECS = {
+          DummyTimeGranularity.DAILY: DummyGranularitySpec(interval_days=1),
+          DummyTimeGranularity.WEEKLY: DummyGranularitySpec(interval_days=7),
+      }
 
     # pylint: enable=invalid-name
 
@@ -67,8 +92,12 @@ else:  # pylint: disable=unreachable
     mock_api.Estimate = DummyContainer
     mock_api.DescriptiveMetrics = DummyContainer
     mock_api.AnalysisMetrics = DummyContainer
-    mock_api.AnalysisConfig = DummyContainer
+    mock_api.AnalysisConfig = DummyAnalysisConfig
     mock_api.AnalysisResult = DummyContainer
+    mock_api.DesignConfig = DummyDesignConfig
+    mock_api.Design = DummyDesign
+    mock_api.TimeGranularity = DummyTimeGranularity
+    mock_api.GRANULARITY_SPECS = GeoxApiModuleSpec.GRANULARITY_SPECS
 
     mock_parent = mock.MagicMock()
     mock_parent.api = mock_api
@@ -141,11 +170,13 @@ def _create_metrics(
 
 def _create_analysis_result(
     results: Mapping[str, geox_api.AnalysisMetrics],
+    design: geox_api.Design | None = None,
 ) -> geox_api.AnalysisResult:
   """Creates a mock AnalysisResult object for testing.
 
   Args:
     results: Mapping of cell names to mock `AnalysisMetrics`.
+    design: Optional mock `Design` attached to `analysis_config`.
 
   Returns:
     A mock `meridian_geox.api.AnalysisResult` object.
@@ -159,6 +190,10 @@ def _create_analysis_result(
   type(analysis_config).analysis_end_date = mock.PropertyMock(
       return_value=datetime.datetime(2026, 1, 10)
   )
+  if design is None:
+    design = mock.create_autospec(geox_api.Design, instance=True, spec_set=True)
+    design.design_config = None
+  type(analysis_config).design = mock.PropertyMock(return_value=design)
   return geox_api.AnalysisResult(
       results=dict(results),
       analysis_config=analysis_config,
@@ -306,6 +341,125 @@ class MeridianGeoXAdapterTest(parameterized.TestCase):
             kpi_type=constants.REVENUE,
             revenue_per_kpi=None,
         )
+
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="daily",
+          time_granularity=geox_api.TimeGranularity.DAILY,
+          expected_end_date=datetime.date(2026, 1, 10),
+      ),
+      dict(
+          testcase_name="weekly",
+          time_granularity=geox_api.TimeGranularity.WEEKLY,
+          expected_end_date=datetime.date(2026, 1, 16),
+      ),
+  )
+  def test_resolve_time_granularity_adjusts_experiment_end_date(
+      self,
+      time_granularity: geox_api.TimeGranularity,
+      expected_end_date: datetime.date,
+  ) -> None:
+    design_config = mock.create_autospec(
+        geox_api.DesignConfig, instance=True, spec_set=True
+    )
+    design_config.time_granularity = time_granularity
+    design = mock.create_autospec(geox_api.Design, instance=True, spec_set=True)
+    design.design_config = design_config
+    result = _create_analysis_result({"cell_1": _create_metrics()}, design)
+
+    resolved = geox_adapter.resolve_meridian_geox_source(
+        result=result,
+        kpi_type=constants.REVENUE,
+        revenue_per_kpi=None,
+    )
+    self.assertEqual(
+        resolved.experiment_info.experiment_start_date,
+        datetime.date(2026, 1, 1),
+    )
+    self.assertEqual(
+        resolved.experiment_info.experiment_end_date,
+        expected_end_date,
+    )
+
+  def test_resolve_defaults_to_daily_when_design_config_is_none(self) -> None:
+    design = mock.create_autospec(geox_api.Design, instance=True, spec_set=True)
+    design.design_config = None
+    result = _create_analysis_result({"cell_1": _create_metrics()}, design)
+
+    resolved = geox_adapter.resolve_meridian_geox_source(
+        result=result,
+        kpi_type=constants.REVENUE,
+        revenue_per_kpi=None,
+    )
+    self.assertEqual(
+        resolved.experiment_info.experiment_end_date,
+        datetime.date(2026, 1, 10),
+    )
+
+  def test_resolve_defaults_to_daily_when_granularity_specs_missing(
+      self,
+  ) -> None:
+    design_config = mock.create_autospec(
+        geox_api.DesignConfig, instance=True, spec_set=True
+    )
+    design_config.time_granularity = geox_api.TimeGranularity.WEEKLY
+    design = mock.create_autospec(geox_api.Design, instance=True, spec_set=True)
+    design.design_config = design_config
+    result = _create_analysis_result({"cell_1": _create_metrics()}, design)
+
+    with mock.patch.object(geox_adapter, "geox_api", types.SimpleNamespace()):
+      resolved = geox_adapter.resolve_meridian_geox_source(
+          result=result,
+          kpi_type=constants.REVENUE,
+          revenue_per_kpi=None,
+      )
+    self.assertEqual(
+        resolved.experiment_info.experiment_end_date,
+        datetime.date(2026, 1, 10),
+    )
+
+  def test_resolve_defaults_to_daily_when_design_config_missing_granularity(
+      self,
+  ) -> None:
+    design = mock.create_autospec(geox_api.Design, instance=True, spec_set=True)
+    design.design_config = types.SimpleNamespace()
+    result = _create_analysis_result({"cell_1": _create_metrics()}, design)
+
+    resolved = geox_adapter.resolve_meridian_geox_source(
+        result=result,
+        kpi_type=constants.REVENUE,
+        revenue_per_kpi=None,
+    )
+    self.assertEqual(
+        resolved.experiment_info.experiment_end_date,
+        datetime.date(2026, 1, 10),
+    )
+
+  @parameterized.named_parameters(
+      dict(testcase_name="none_granularity", time_granularity=None),
+      dict(testcase_name="unknown_granularity", time_granularity="MONTHLY"),
+  )
+  def test_resolve_raises_for_unsupported_time_granularity(
+      self,
+      time_granularity: object,
+  ) -> None:
+    design_config = mock.create_autospec(
+        geox_api.DesignConfig, instance=True, spec_set=True
+    )
+    design_config.time_granularity = time_granularity
+    design = mock.create_autospec(geox_api.Design, instance=True, spec_set=True)
+    design.design_config = design_config
+    result = _create_analysis_result({"cell_1": _create_metrics()}, design)
+
+    with self.assertRaisesRegex(
+        geox_adapter.InvalidGeoXResultError,
+        "Unsupported time_granularity",
+    ):
+      geox_adapter.resolve_meridian_geox_source(
+          result=result,
+          kpi_type=constants.REVENUE,
+          revenue_per_kpi=None,
+      )
 
 
 if __name__ == "__main__":

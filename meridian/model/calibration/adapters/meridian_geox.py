@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+import datetime
 from typing import TYPE_CHECKING
 
 from meridian.model.calibration import base
@@ -84,6 +86,30 @@ def _validate_and_extract_metrics(
   return metrics
 
 
+def _resolve_interval_days(
+    result: geox_api.AnalysisResult,
+) -> int:
+  """Resolves the period interval in days for a GeoX analysis result."""
+  design = getattr(result.analysis_config, "design", None)
+  design_config = getattr(design, "design_config", None)
+  if design_config is None:
+    return 1
+  # Guard lookups so older meridian-geox releases without `time_granularity`
+  # or `GRANULARITY_SPECS` default to 1-day intervals.
+  specs = getattr(geox_api, "GRANULARITY_SPECS", None)
+  if not isinstance(specs, Mapping) or not hasattr(
+      design_config, "time_granularity"
+  ):
+    return 1
+  time_granularity = design_config.time_granularity
+  if time_granularity not in specs:
+    raise InvalidGeoXResultError(
+        f"Unsupported time_granularity {time_granularity!r} in GeoX"
+        " AnalysisResult."
+    )
+  return specs[time_granularity].interval_days
+
+
 def resolve_meridian_geox_source(
     *,
     result: geox_api.AnalysisResult,
@@ -97,7 +123,9 @@ def resolve_meridian_geox_source(
   This adapter translates `meridian_geox.api.AnalysisResult` objects and KPI
   type information into generic
   `meridian.model.calibration.base.CalibrationData` objects and performs
-  necessary KPI conversions.
+  necessary KPI conversions. For weekly GeoX experiments (where
+  `analysis_end_date` marks the start of the final week), `experiment_end_date`
+  is extended by `interval_days - 1` days to cover the full final period.
 
   Args:
     result: The `meridian_geox.api.AnalysisResult` containing the Meridian GeoX
@@ -121,6 +149,7 @@ def resolve_meridian_geox_source(
         - The results contain multi-cell study results.
         - The result is missing the required iCPD estimate.
         - The result is missing the required estimated_bau_spend estimate.
+        - The result specifies an unsupported `time_granularity`.
     ValueError: If any of the following are true:
         - `kpi_type` is `'non-revenue'` but `revenue_per_kpi` is `None`.
         - The experiment result is statistically significantly negative.
@@ -152,6 +181,12 @@ def resolve_meridian_geox_source(
         " running calibration."
     )
 
+  interval_days = _resolve_interval_days(result)
+  experiment_end_date = (
+      result.analysis_config.analysis_end_date
+      + datetime.timedelta(days=interval_days - 1)
+  ).date()
+
   return experiment_adapter.resolve_experiment_source(
       point_estimate=icpd.point_estimate,
       standard_error=icpd.standard_deviation,
@@ -159,7 +194,7 @@ def resolve_meridian_geox_source(
       revenue_per_kpi=revenue_per_kpi,
       total_spend=metrics.descriptive_metrics.estimated_bau_spend,
       experiment_start_date=result.analysis_config.analysis_start_date.date(),
-      experiment_end_date=result.analysis_config.analysis_end_date.date(),
+      experiment_end_date=experiment_end_date,
       point_estimate_adjustment=point_estimate_adjustment,
       standard_error_adjustment=standard_error_adjustment,
       source_type=base.SourceType.MERIDIAN_GEOX,
